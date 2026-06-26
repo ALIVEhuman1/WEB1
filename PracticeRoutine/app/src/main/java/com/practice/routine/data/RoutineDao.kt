@@ -22,4 +22,7 @@ interface RoutineDao {
 
     @Query("SELECT * FROM routine_items ORDER BY `order` ASC")
     suspend fun getAllItemsOnce(): List<RoutineItem>
+
+    @Query("DELETE FROM routine_items")
+    suspend fun deleteAll()
 }

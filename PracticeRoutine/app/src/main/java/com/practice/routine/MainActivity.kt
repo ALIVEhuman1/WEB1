@@ -10,6 +10,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -26,12 +27,20 @@ import com.practice.routine.ui.PresetListActivity
 import com.practice.routine.ui.RoutineAdapter
 import com.practice.routine.ui.RoutineViewModel
 import com.practice.routine.ui.SessionActivity
+import com.practice.routine.ui.SettingsActivity
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: RoutineViewModel by viewModels()
     private lateinit var adapter: RoutineAdapter
+
+    private var isSelectionMode = false
+    private val backCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            exitSelectionMode()
+        }
+    }
 
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -47,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
+        onBackPressedDispatcher.addCallback(this, backCallback)
 
         requestNotificationPermission()
         setupRecyclerView()
@@ -59,14 +69,49 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        menu.findItem(R.id.action_select_mode)?.isVisible = !isSelectionMode
+        menu.findItem(R.id.action_save_preset)?.isVisible = !isSelectionMode
+        menu.findItem(R.id.action_load_preset)?.isVisible = !isSelectionMode
+        menu.findItem(R.id.action_settings)?.isVisible = !isSelectionMode
+        menu.findItem(R.id.action_delete_selected)?.isVisible = isSelectionMode
+        menu.findItem(R.id.action_cancel_select)?.isVisible = isSelectionMode
+        return true
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_select_mode -> {
+                isSelectionMode = true
+                backCallback.isEnabled = true
+                adapter.enterSelectionMode()
+                supportActionBar?.title = "0개 선택됨"
+                invalidateOptionsMenu()
+                true
+            }
             R.id.action_save_preset -> {
                 showSavePresetDialog()
                 true
             }
             R.id.action_load_preset -> {
                 startActivity(Intent(this, PresetListActivity::class.java))
+                true
+            }
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            R.id.action_delete_selected -> {
+                val selected = adapter.getSelectedItems()
+                if (selected.isEmpty()) {
+                    Toast.makeText(this, "선택된 항목이 없습니다.", Toast.LENGTH_SHORT).show()
+                } else {
+                    confirmDeleteMultiple(selected)
+                }
+                true
+            }
+            R.id.action_cancel_select -> {
+                exitSelectionMode()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -87,7 +132,17 @@ class MainActivity : AppCompatActivity() {
         adapter = RoutineAdapter(
             onEdit = { showAddEditDialog(it) },
             onDelete = { confirmDelete(it) },
-            onReorder = { viewModel.reorder(it) }
+            onReorder = { viewModel.reorder(it) },
+            onSelectionChanged = { count ->
+                if (!isSelectionMode && count >= 0) {
+                    isSelectionMode = true
+                    backCallback.isEnabled = true
+                    invalidateOptionsMenu()
+                }
+                if (count >= 0) {
+                    supportActionBar?.title = "${count}개 선택됨"
+                }
+            }
         )
         binding.rvRoutines.layoutManager = LinearLayoutManager(this)
         binding.rvRoutines.adapter = adapter
@@ -155,6 +210,26 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("삭제") { _, _ -> viewModel.delete(item) }
             .setNegativeButton("취소", null)
             .show()
+    }
+
+    private fun confirmDeleteMultiple(items: List<RoutineItem>) {
+        AlertDialog.Builder(this)
+            .setTitle("삭제")
+            .setMessage("선택한 ${items.size}개 항목을 삭제할까요?")
+            .setPositiveButton("삭제") { _, _ ->
+                viewModel.deleteMultiple(items)
+                exitSelectionMode()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun exitSelectionMode() {
+        isSelectionMode = false
+        backCallback.isEnabled = false
+        adapter.exitSelectionMode()
+        supportActionBar?.title = getString(R.string.app_name)
+        invalidateOptionsMenu()
     }
 
     private fun showSavePresetDialog() {

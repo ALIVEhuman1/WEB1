@@ -1,8 +1,9 @@
 package com.practice.routine.ui
 
 import android.content.*
-import android.media.Ringtone
+import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.*
 import android.view.View
 import android.widget.Toast
@@ -20,7 +21,7 @@ class SessionActivity : AppCompatActivity() {
     private var items: ArrayList<RoutineItem> = arrayListOf()
     private var currentIndex = 0
     private var isPaused = false
-    private var confirmRingtone: Ringtone? = null
+    private var alarmPlayer: MediaPlayer? = null
 
     private val tickReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -114,7 +115,7 @@ class SessionActivity : AppCompatActivity() {
                 .setTitle("다음 루틴으로")
                 .setMessage("현재 루틴을 건너뛰고 다음으로 이동할까요?")
                 .setPositiveButton("예") { _, _ ->
-                    stopConfirmRingtone()
+                    stopAlarm()
                     binding.btnConfirmNext.visibility = View.GONE
                     binding.btnPauseResume.isEnabled = true
                     binding.btnNext.isEnabled = true
@@ -131,7 +132,7 @@ class SessionActivity : AppCompatActivity() {
                 .setTitle("루틴 중지")
                 .setMessage("연습 루틴을 중지할까요?")
                 .setPositiveButton("중지") { _, _ ->
-                    stopConfirmRingtone()
+                    stopAlarm()
                     startService(Intent(this, TimerService::class.java).apply {
                         action = TimerService.ACTION_STOP
                     })
@@ -167,18 +168,31 @@ class SessionActivity : AppCompatActivity() {
     }
 
     private fun showNextConfirmUI(doneIndex: Int, nextItem: RoutineItem) {
-        // 알람 소리 직접 재생
-        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        confirmRingtone = RingtoneManager.getRingtone(this, alarmUri)
-        confirmRingtone?.play()
+        val prefs = getSharedPreferences(SettingsActivity.PREFS_NAME, MODE_PRIVATE)
+        val uriStr = prefs.getString(SettingsActivity.PREF_ALARM_URI, null)
+        val volumePct = prefs.getInt(SettingsActivity.PREF_ALARM_VOLUME, SettingsActivity.DEFAULT_VOLUME)
+        val volume = volumePct / 100f
+
+        val alarmUri = if (uriStr != null) Uri.parse(uriStr)
+        else (RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+
+        try {
+            alarmPlayer = MediaPlayer.create(this, alarmUri)?.also {
+                it.setVolume(volume, volume)
+                it.isLooping = true
+                it.start()
+            }
+        } catch (e: Exception) {
+            // 알람 재생 실패 시 무음으로 진행
+        }
 
         binding.btnPauseResume.isEnabled = false
         binding.btnNext.isEnabled = false
         binding.btnConfirmNext.visibility = View.VISIBLE
 
         binding.btnConfirmNext.setOnClickListener {
-            stopConfirmRingtone()
+            stopAlarm()
             binding.btnConfirmNext.visibility = View.GONE
             binding.btnPauseResume.isEnabled = true
             binding.btnNext.isEnabled = true
@@ -190,9 +204,10 @@ class SessionActivity : AppCompatActivity() {
         }
     }
 
-    private fun stopConfirmRingtone() {
-        confirmRingtone?.stop()
-        confirmRingtone = null
+    private fun stopAlarm() {
+        alarmPlayer?.stop()
+        alarmPlayer?.release()
+        alarmPlayer = null
     }
 
     private fun updateUI(index: Int, remainingSeconds: Long) {
@@ -226,7 +241,7 @@ class SessionActivity : AppCompatActivity() {
     }
 
     private fun showAllDone() {
-        stopConfirmRingtone()
+        stopAlarm()
         binding.btnConfirmNext.visibility = View.GONE
         binding.tvCurrentName.text = "모든 루틴 완료!"
         binding.tvTimer.text = "00:00"
@@ -264,7 +279,7 @@ class SessionActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        stopConfirmRingtone()
+        stopAlarm()
         unregisterReceiver(tickReceiver)
         unregisterReceiver(stepDoneReceiver)
         unregisterReceiver(allDoneReceiver)

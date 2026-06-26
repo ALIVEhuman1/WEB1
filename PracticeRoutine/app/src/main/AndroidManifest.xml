@@ -36,6 +36,10 @@
             android:name=".ui.PresetEditActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.TimerService"
             android:exported="false"

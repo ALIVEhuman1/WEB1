@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: RoutineViewModel by viewModels()
     private lateinit var adapter: RoutineAdapter
+    private var currentPresets: List<RoutinePreset> = emptyList()
 
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -66,8 +67,7 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.action_load_preset -> {
-                val presets = viewModel.presets.value ?: emptyList()
-                showLoadPresetDialog(presets)
+                showLoadPresetDialog(currentPresets)
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -114,6 +114,9 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(items)
             binding.tvEmptyHint.visibility =
                 if (items.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        viewModel.presets.observe(this) { presets ->
+            currentPresets = presets
         }
     }
 

@@ -13,7 +13,7 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
     val items: LiveData<List<RoutineItem>> = repo.allItems.asLiveData()
 
     fun add(name: String, minutes: Int) = viewModelScope.launch {
-        val currentCount = items.value?.size ?: 0
+        val currentCount = repo.getAllOnce().size
         repo.insert(RoutineItem(name = name, durationMinutes = minutes, order = currentCount))
     }
 

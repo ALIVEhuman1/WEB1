@@ -27,6 +27,8 @@ class TimerService : Service() {
         const val BROADCAST_ALL_DONE = "com.practice.routine.ALL_DONE"
         const val EXTRA_CURRENT_INDEX = "EXTRA_CURRENT_INDEX"
         const val EXTRA_REMAINING_SECONDS = "EXTRA_REMAINING_SECONDS"
+
+        @Volatile var isRunning = false
     }
 
     private val binder = TimerBinder()
@@ -45,6 +47,7 @@ class TimerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         createNotificationChannel()
     }
 
@@ -172,6 +175,7 @@ class TimerService : Service() {
     private fun buildNotification(name: String, secondsLeft: Long): Notification {
         val sessionIntent = Intent(this, SessionActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putParcelableArrayListExtra(SessionActivity.EXTRA_ITEMS, items)
         }
         val pi = PendingIntent.getActivity(
             this, 0, sessionIntent,
@@ -245,6 +249,7 @@ class TimerService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         timerJob?.cancel()
         scope.cancel()
         super.onDestroy()

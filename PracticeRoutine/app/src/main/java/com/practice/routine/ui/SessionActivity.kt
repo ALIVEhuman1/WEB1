@@ -4,8 +4,10 @@ import android.content.*
 import android.os.*
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.practice.routine.data.RoutineItem
 import com.practice.routine.databinding.ActivitySessionBinding
 import com.practice.routine.service.TimerService
@@ -55,8 +57,15 @@ class SessionActivity : AppCompatActivity() {
 
         setupList()
         setupButtons()
+        setupBackHandler()
         initUI()
-        startService()
+        if (!TimerService.isRunning) {
+            startTimerService()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
     }
 
     private fun initUI() {
@@ -79,6 +88,7 @@ class SessionActivity : AppCompatActivity() {
 
     private fun setupList() {
         binding.tvTotalRoutines.text = "총 ${items.size}개 루틴 · 총 ${items.sumOf { it.durationMinutes }}분"
+        binding.rvSessionList.layoutManager = LinearLayoutManager(this)
         val adapter = SessionRoutineAdapter(items)
         binding.rvSessionList.adapter = adapter
     }
@@ -119,7 +129,23 @@ class SessionActivity : AppCompatActivity() {
         }
     }
 
-    private fun startService() {
+    private fun setupBackHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                AlertDialog.Builder(this@SessionActivity)
+                    .setTitle("루틴 계속 진행")
+                    .setMessage("뒤로 가도 타이머는 백그라운드에서 계속 실행됩니다.")
+                    .setPositiveButton("확인") { _, _ ->
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                    .setNegativeButton("취소", null)
+                    .show()
+            }
+        })
+    }
+
+    private fun startTimerService() {
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_START
             putParcelableArrayListExtra(TimerService.EXTRA_ITEMS, items)
@@ -188,15 +214,6 @@ class SessionActivity : AppCompatActivity() {
         unregisterReceiver(tickReceiver)
         unregisterReceiver(stepDoneReceiver)
         unregisterReceiver(allDoneReceiver)
-    }
-
-    override fun onBackPressed() {
-        AlertDialog.Builder(this)
-            .setTitle("루틴 계속 진행")
-            .setMessage("뒤로 가도 타이머는 백그라운드에서 계속 실행됩니다.")
-            .setPositiveButton("확인") { _, _ -> super.onBackPressed() }
-            .setNegativeButton("취소", null)
-            .show()
     }
 
     companion object {

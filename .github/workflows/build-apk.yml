@@ -26,23 +26,23 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Gradle 설치
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+
       - name: Gradle 캐시
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-
-      - name: Gradle 실행 권한 부여
-        run: chmod +x PracticeRoutine/gradlew
 
       - name: APK 빌드 (Debug)
         run: |
           cd PracticeRoutine
-          ./gradlew assembleDebug --no-daemon
+          gradle assembleDebug --no-daemon
 
       - name: APK 업로드 (Artifacts)
         uses: actions/upload-artifact@v4

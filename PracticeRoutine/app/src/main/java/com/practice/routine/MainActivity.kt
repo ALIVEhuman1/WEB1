@@ -16,6 +16,8 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -38,7 +40,11 @@ class MainActivity : AppCompatActivity() {
     private var isSelectionMode = false
     private val backCallback = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
-            exitSelectionMode()
+            if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                binding.drawerLayout.closeDrawer(GravityCompat.START)
+            } else {
+                exitSelectionMode()
+            }
         }
     }
 
@@ -59,9 +65,55 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, backCallback)
 
         requestNotificationPermission()
+        setupDrawer()
         setupRecyclerView()
         setupObservers()
         setupButtons()
+    }
+
+    private fun setupDrawer() {
+        // Set drawer width to 1/3 of screen width
+        val drawerWidth = resources.displayMetrics.widthPixels / 3
+        val params = binding.navDrawer.layoutParams as DrawerLayout.LayoutParams
+        params.width = drawerWidth
+        binding.navDrawer.layoutParams = params
+
+        // Hamburger icon opens drawer
+        binding.toolbar.setNavigationOnClickListener {
+            if (!isSelectionMode) {
+                binding.drawerLayout.openDrawer(GravityCompat.START)
+            }
+        }
+
+        // Close drawer on background touch is default DrawerLayout behavior
+
+        // Drawer item click handlers
+        binding.drawerItemSelect.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            enterSelectionMode()
+        }
+        binding.drawerItemSave.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            showSavePresetDialog()
+        }
+        binding.drawerItemLoad.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startActivity(Intent(this, PresetListActivity::class.java))
+        }
+        binding.drawerItemSettings.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        // Back press closes drawer if open
+        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: android.view.View) {
+                backCallback.isEnabled = true
+            }
+            override fun onDrawerClosed(drawerView: android.view.View) {
+                if (!isSelectionMode) backCallback.isEnabled = false
+            }
+        })
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -70,10 +122,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menu.findItem(R.id.action_select_mode)?.isVisible = !isSelectionMode
-        menu.findItem(R.id.action_save_preset)?.isVisible = !isSelectionMode
-        menu.findItem(R.id.action_load_preset)?.isVisible = !isSelectionMode
-        menu.findItem(R.id.action_settings)?.isVisible = !isSelectionMode
         menu.findItem(R.id.action_delete_selected)?.isVisible = isSelectionMode
         menu.findItem(R.id.action_cancel_select)?.isVisible = isSelectionMode
         return true
@@ -81,26 +129,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_select_mode -> {
-                isSelectionMode = true
-                backCallback.isEnabled = true
-                adapter.enterSelectionMode()
-                supportActionBar?.title = "0개 선택됨"
-                invalidateOptionsMenu()
-                true
-            }
-            R.id.action_save_preset -> {
-                showSavePresetDialog()
-                true
-            }
-            R.id.action_load_preset -> {
-                startActivity(Intent(this, PresetListActivity::class.java))
-                true
-            }
-            R.id.action_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
             R.id.action_delete_selected -> {
                 val selected = adapter.getSelectedItems()
                 if (selected.isEmpty()) {
@@ -135,8 +163,12 @@ class MainActivity : AppCompatActivity() {
             onReorder = { viewModel.reorder(it) },
             onSelectionChanged = { count ->
                 if (!isSelectionMode && count >= 0) {
+                    // Long-press triggered selection mode from adapter
                     isSelectionMode = true
                     backCallback.isEnabled = true
+                    binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+                    binding.toolbar.setNavigationIcon(R.drawable.ic_close)
+                    supportActionBar?.title = "0개 선택됨"
                     invalidateOptionsMenu()
                 }
                 if (count >= 0) {
@@ -174,6 +206,26 @@ class MainActivity : AppCompatActivity() {
     private fun setupButtons() {
         binding.fabAdd.setOnClickListener { showAddEditDialog(null) }
         binding.btnStart.setOnClickListener { startSession() }
+    }
+
+    private fun enterSelectionMode() {
+        isSelectionMode = true
+        backCallback.isEnabled = true
+        adapter.enterSelectionMode()
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+        binding.toolbar.setNavigationIcon(R.drawable.ic_close)
+        supportActionBar?.title = "0개 선택됨"
+        invalidateOptionsMenu()
+    }
+
+    private fun exitSelectionMode() {
+        isSelectionMode = false
+        backCallback.isEnabled = false
+        adapter.exitSelectionMode()
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
+        binding.toolbar.setNavigationIcon(R.drawable.ic_menu)
+        supportActionBar?.title = getString(R.string.app_name)
+        invalidateOptionsMenu()
     }
 
     private fun showAddEditDialog(existing: RoutineItem?) {
@@ -222,14 +274,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("취소", null)
             .show()
-    }
-
-    private fun exitSelectionMode() {
-        isSelectionMode = false
-        backCallback.isEnabled = false
-        adapter.exitSelectionMode()
-        supportActionBar?.title = getString(R.string.app_name)
-        invalidateOptionsMenu()
     }
 
     private fun showSavePresetDialog() {

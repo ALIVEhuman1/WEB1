@@ -1,6 +1,8 @@
 package com.practice.routine.ui
 
 import android.content.*
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.*
 import android.view.View
 import android.widget.Toast
@@ -18,6 +20,7 @@ class SessionActivity : AppCompatActivity() {
     private var items: ArrayList<RoutineItem> = arrayListOf()
     private var currentIndex = 0
     private var isPaused = false
+    private var confirmRingtone: Ringtone? = null
 
     private val tickReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -34,7 +37,7 @@ class SessionActivity : AppCompatActivity() {
             markItemDone(doneIndex)
             val nextItem = items.getOrNull(doneIndex + 1)
             if (nextItem != null) {
-                showNextConfirmDialog(doneIndex, nextItem)
+                showNextConfirmUI(doneIndex, nextItem)
             }
             // 마지막 루틴이면 allDoneReceiver가 처리
         }
@@ -111,6 +114,10 @@ class SessionActivity : AppCompatActivity() {
                 .setTitle("다음 루틴으로")
                 .setMessage("현재 루틴을 건너뛰고 다음으로 이동할까요?")
                 .setPositiveButton("예") { _, _ ->
+                    stopConfirmRingtone()
+                    binding.btnConfirmNext.visibility = View.GONE
+                    binding.btnPauseResume.isEnabled = true
+                    binding.btnNext.isEnabled = true
                     startService(Intent(this, TimerService::class.java).apply {
                         action = TimerService.ACTION_NEXT
                     })
@@ -124,6 +131,7 @@ class SessionActivity : AppCompatActivity() {
                 .setTitle("루틴 중지")
                 .setMessage("연습 루틴을 중지할까요?")
                 .setPositiveButton("중지") { _, _ ->
+                    stopConfirmRingtone()
                     startService(Intent(this, TimerService::class.java).apply {
                         action = TimerService.ACTION_STOP
                     })
@@ -158,25 +166,33 @@ class SessionActivity : AppCompatActivity() {
         startForegroundService(intent)
     }
 
-    private fun showNextConfirmDialog(doneIndex: Int, nextItem: RoutineItem) {
-        val doneName = items[doneIndex].name
+    private fun showNextConfirmUI(doneIndex: Int, nextItem: RoutineItem) {
+        // 알람 소리 직접 재생
+        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        confirmRingtone = RingtoneManager.getRingtone(this, alarmUri)
+        confirmRingtone?.play()
+
         binding.btnPauseResume.isEnabled = false
         binding.btnNext.isEnabled = false
+        binding.btnConfirmNext.visibility = View.VISIBLE
 
-        AlertDialog.Builder(this)
-            .setTitle("\"$doneName\" 완료!")
-            .setMessage("다음 루틴: ${nextItem.name} (${nextItem.durationMinutes}분)\n\n준비가 되면 다음 시작 버튼을 눌러주세요.")
-            .setPositiveButton("다음 시작") { _, _ ->
-                isPaused = false
-                binding.btnPauseResume.isEnabled = true
-                binding.btnNext.isEnabled = true
-                binding.btnPauseResume.text = "일시정지"
-                startService(Intent(this, TimerService::class.java).apply {
-                    action = TimerService.ACTION_CONFIRM_NEXT
-                })
-            }
-            .setCancelable(false)
-            .show()
+        binding.btnConfirmNext.setOnClickListener {
+            stopConfirmRingtone()
+            binding.btnConfirmNext.visibility = View.GONE
+            binding.btnPauseResume.isEnabled = true
+            binding.btnNext.isEnabled = true
+            binding.btnPauseResume.text = "일시정지"
+            isPaused = false
+            startService(Intent(this, TimerService::class.java).apply {
+                action = TimerService.ACTION_CONFIRM_NEXT
+            })
+        }
+    }
+
+    private fun stopConfirmRingtone() {
+        confirmRingtone?.stop()
+        confirmRingtone = null
     }
 
     private fun updateUI(index: Int, remainingSeconds: Long) {
@@ -210,6 +226,8 @@ class SessionActivity : AppCompatActivity() {
     }
 
     private fun showAllDone() {
+        stopConfirmRingtone()
+        binding.btnConfirmNext.visibility = View.GONE
         binding.tvCurrentName.text = "모든 루틴 완료!"
         binding.tvTimer.text = "00:00"
         binding.tvCurrentStep.text = "${items.size}/${items.size}"
@@ -234,18 +252,19 @@ class SessionActivity : AppCompatActivity() {
         registerReceiver(allDoneReceiver, IntentFilter(TimerService.BROADCAST_ALL_DONE),
             RECEIVER_NOT_EXPORTED)
 
-        // 앱이 백그라운드에 있는 동안 루틴이 완료된 경우 다이얼로그 표시
+        // 앱이 백그라운드에 있는 동안 루틴이 완료된 경우 버튼으로 표시
         val waitIdx = TimerService.waitingIndex
         if (waitIdx >= 0) {
             val nextItem = items.getOrNull(waitIdx + 1)
             if (nextItem != null) {
-                showNextConfirmDialog(waitIdx, nextItem)
+                showNextConfirmUI(waitIdx, nextItem)
             }
         }
     }
 
     override fun onPause() {
         super.onPause()
+        stopConfirmRingtone()
         unregisterReceiver(tickReceiver)
         unregisterReceiver(stepDoneReceiver)
         unregisterReceiver(allDoneReceiver)

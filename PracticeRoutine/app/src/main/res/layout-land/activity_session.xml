@@ -141,6 +141,18 @@
 
             </LinearLayout>
 
+            <!-- 루틴 완료 시 등장하는 다음 시작 버튼 -->
+            <Button
+                android:id="@+id/btnConfirmNext"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="6dp"
+                android:text="▶ 다음 시작"
+                android:backgroundTint="@color/primary"
+                android:textColor="@color/white"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
         </LinearLayout>
 
         <!-- 오른쪽: 루틴 목록 -->

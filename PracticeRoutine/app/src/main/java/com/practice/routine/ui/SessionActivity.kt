@@ -32,6 +32,11 @@ class SessionActivity : AppCompatActivity() {
         override fun onReceive(ctx: Context, intent: Intent) {
             val doneIndex = intent.getIntExtra(TimerService.EXTRA_CURRENT_INDEX, 0)
             markItemDone(doneIndex)
+            val nextItem = items.getOrNull(doneIndex + 1)
+            if (nextItem != null) {
+                showNextConfirmDialog(doneIndex, nextItem)
+            }
+            // 마지막 루틴이면 allDoneReceiver가 처리
         }
     }
 
@@ -153,6 +158,27 @@ class SessionActivity : AppCompatActivity() {
         startForegroundService(intent)
     }
 
+    private fun showNextConfirmDialog(doneIndex: Int, nextItem: RoutineItem) {
+        val doneName = items[doneIndex].name
+        binding.btnPauseResume.isEnabled = false
+        binding.btnNext.isEnabled = false
+
+        AlertDialog.Builder(this)
+            .setTitle("\"$doneName\" 완료!")
+            .setMessage("다음 루틴: ${nextItem.name} (${nextItem.durationMinutes}분)\n\n준비가 되면 다음 시작 버튼을 눌러주세요.")
+            .setPositiveButton("다음 시작") { _, _ ->
+                isPaused = false
+                binding.btnPauseResume.isEnabled = true
+                binding.btnNext.isEnabled = true
+                binding.btnPauseResume.text = "일시정지"
+                startService(Intent(this, TimerService::class.java).apply {
+                    action = TimerService.ACTION_CONFIRM_NEXT
+                })
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun updateUI(index: Int, remainingSeconds: Long) {
         if (index >= items.size) return
         val item = items[index]
@@ -207,6 +233,15 @@ class SessionActivity : AppCompatActivity() {
             RECEIVER_NOT_EXPORTED)
         registerReceiver(allDoneReceiver, IntentFilter(TimerService.BROADCAST_ALL_DONE),
             RECEIVER_NOT_EXPORTED)
+
+        // 앱이 백그라운드에 있는 동안 루틴이 완료된 경우 다이얼로그 표시
+        val waitIdx = TimerService.waitingIndex
+        if (waitIdx >= 0) {
+            val nextItem = items.getOrNull(waitIdx + 1)
+            if (nextItem != null) {
+                showNextConfirmDialog(waitIdx, nextItem)
+            }
+        }
     }
 
     override fun onPause() {

@@ -18,6 +18,7 @@ class TimerService : Service() {
         const val ACTION_RESUME = "ACTION_RESUME"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_NEXT = "ACTION_NEXT"
+        const val ACTION_CONFIRM_NEXT = "ACTION_CONFIRM_NEXT"
         const val EXTRA_ITEMS = "EXTRA_ITEMS"
         const val CHANNEL_ID = "practice_timer_channel"
         const val NOTIF_ID = 1001
@@ -29,6 +30,8 @@ class TimerService : Service() {
         const val EXTRA_REMAINING_SECONDS = "EXTRA_REMAINING_SECONDS"
 
         @Volatile var isRunning = false
+        // 완료 후 확인 대기 중인 단계 인덱스. -1이면 대기 중 아님
+        @Volatile var waitingIndex = -1
     }
 
     private val binder = TimerBinder()
@@ -59,6 +62,7 @@ class TimerService : Service() {
                 if (newItems != null) {
                     items = newItems
                     currentIndex = 0
+                    waitingIndex = -1
                     startCurrentStep()
                 }
             }
@@ -66,6 +70,7 @@ class TimerService : Service() {
             ACTION_RESUME -> resumeTimer()
             ACTION_STOP -> stopSelf()
             ACTION_NEXT -> skipToNext()
+            ACTION_CONFIRM_NEXT -> confirmAndStartNext()
         }
         return START_NOT_STICKY
     }
@@ -101,15 +106,29 @@ class TimerService : Service() {
     }
 
     private fun onStepComplete() {
+        val completedIndex = currentIndex
+        val isLastStep = completedIndex >= items.size - 1
+
         sendStepDoneNotification()
         broadcastStepDone()
-        currentIndex++
-        if (currentIndex < items.size) {
-            startCurrentStep()
-        } else {
+
+        if (isLastStep) {
+            // 마지막 루틴 - 자동으로 완료 처리
+            currentIndex++
             broadcastAllDone()
             stopSelf()
+        } else {
+            // 다음 루틴이 있으면 확인 대기
+            waitingIndex = completedIndex
+            showWaitingNotification()
         }
+    }
+
+    private fun confirmAndStartNext() {
+        if (waitingIndex < 0) return
+        currentIndex = waitingIndex + 1
+        waitingIndex = -1
+        startCurrentStep()
     }
 
     fun pauseTimer() {
@@ -122,6 +141,7 @@ class TimerService : Service() {
 
     fun skipToNext() {
         timerJob?.cancel()
+        waitingIndex = -1
         currentIndex++
         startCurrentStep()
     }
@@ -153,7 +173,7 @@ class TimerService : Service() {
         val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
         val text = if (nextItem != null)
-            "'${currentItem.name}' 완료! 다음: '${nextItem.name}' (${nextItem.durationMinutes}분)"
+            "'${currentItem.name}' 완료! 앱을 열어 다음 루틴을 시작하세요."
         else
             "'${currentItem.name}' 완료! 모든 루틴 끝!"
 
@@ -170,6 +190,49 @@ class TimerService : Service() {
 
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIF_ID + currentIndex + 10, notif)
+    }
+
+    private fun showWaitingNotification() {
+        val doneItem = items.getOrNull(waitingIndex) ?: return
+        val nextItem = items.getOrNull(waitingIndex + 1) ?: return
+
+        val sessionIntent = Intent(this, SessionActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putParcelableArrayListExtra(SessionActivity.EXTRA_ITEMS, items)
+        }
+        val pi = PendingIntent.getActivity(
+            this, 0, sessionIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val confirmIntent = Intent(this, TimerService::class.java).apply {
+            action = ACTION_CONFIRM_NEXT
+        }
+        val confirmPi = PendingIntent.getService(
+            this, 4, confirmIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(this, TimerService::class.java).apply { action = ACTION_STOP }
+        val stopPi = PendingIntent.getService(
+            this, 3, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIF_ID, NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_timer)
+            .setContentTitle("'${doneItem.name}' 완료!")
+            .setContentText("다음: ${nextItem.name} (${nextItem.durationMinutes}분)")
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText("다음: '${nextItem.name}' (${nextItem.durationMinutes}분)\n준비되면 '다음 시작' 버튼을 눌러주세요."))
+            .setOngoing(true)
+            .setContentIntent(pi)
+            .addAction(R.drawable.ic_skip, "다음 시작", confirmPi)
+            .addAction(R.drawable.ic_stop, "중지", stopPi)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        )
     }
 
     private fun buildNotification(name: String, secondsLeft: Long): Notification {
@@ -250,6 +313,7 @@ class TimerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        waitingIndex = -1
         timerJob?.cancel()
         scope.cancel()
         super.onDestroy()

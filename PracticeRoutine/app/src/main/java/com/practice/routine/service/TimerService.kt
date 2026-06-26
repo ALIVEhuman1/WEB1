@@ -125,6 +125,7 @@ class TimerService : Service() {
 
     private fun broadcastTick() {
         sendBroadcast(Intent(BROADCAST_TICK).apply {
+            setPackage(packageName)
             putExtra(EXTRA_CURRENT_INDEX, currentIndex)
             putExtra(EXTRA_REMAINING_SECONDS, remainingSeconds)
         })
@@ -132,12 +133,15 @@ class TimerService : Service() {
 
     private fun broadcastStepDone() {
         sendBroadcast(Intent(BROADCAST_STEP_DONE).apply {
+            setPackage(packageName)
             putExtra(EXTRA_CURRENT_INDEX, currentIndex)
         })
     }
 
     private fun broadcastAllDone() {
-        sendBroadcast(Intent(BROADCAST_ALL_DONE))
+        sendBroadcast(Intent(BROADCAST_ALL_DONE).apply {
+            setPackage(packageName)
+        })
     }
 
     private fun sendStepDoneNotification() {

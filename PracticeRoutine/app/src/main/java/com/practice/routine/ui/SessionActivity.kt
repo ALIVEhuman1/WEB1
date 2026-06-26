@@ -55,7 +55,26 @@ class SessionActivity : AppCompatActivity() {
 
         setupList()
         setupButtons()
+        initUI()
         startService()
+    }
+
+    private fun initUI() {
+        val item = items[0]
+        binding.tvCurrentStep.text = "1/${items.size}"
+        binding.tvCurrentName.text = item.name
+        binding.tvTimer.text = String.format("%02d:00", item.durationMinutes)
+        binding.progressTimer.max = item.durationMinutes * 60
+        binding.progressTimer.progress = 0
+        val next = items.getOrNull(1)
+        if (next != null) {
+            binding.tvNextLabel.visibility = View.VISIBLE
+            binding.tvNextStep.visibility = View.VISIBLE
+            binding.tvNextStep.text = "다음: ${next.name} (${next.durationMinutes}분)"
+        } else {
+            binding.tvNextLabel.visibility = View.INVISIBLE
+            binding.tvNextStep.visibility = View.INVISIBLE
+        }
     }
 
     private fun setupList() {

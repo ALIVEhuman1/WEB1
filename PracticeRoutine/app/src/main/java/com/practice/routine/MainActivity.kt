@@ -78,7 +78,8 @@ class MainActivity : AppCompatActivity() {
         params.width = drawerWidth
         binding.navDrawer.layoutParams = params
 
-        // Hamburger icon opens drawer
+        // Hamburger icon opens drawer (set explicitly in case ActionBar overrides XML)
+        binding.toolbar.setNavigationIcon(R.drawable.ic_menu)
         binding.toolbar.setNavigationOnClickListener {
             if (!isSelectionMode) {
                 binding.drawerLayout.openDrawer(GravityCompat.START)

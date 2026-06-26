@@ -26,8 +26,7 @@
 
         <activity
             android:name=".ui.SessionActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
+            android:exported="false" />
 
         <service
             android:name=".service.TimerService"

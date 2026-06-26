@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 class RoutineRepository(private val dao: RoutineDao, private val presetDao: PresetDao) {
     val allItems: Flow<List<RoutineItem>> = dao.getAllItems()
     val allPresets: Flow<List<RoutinePreset>> = presetDao.getAllPresets()
+    val presetSummaries: Flow<List<PresetSummary>> = presetDao.getPresetSummaries()
 
     suspend fun insert(item: RoutineItem) = dao.insert(item)
     suspend fun update(item: RoutineItem) = dao.update(item)
@@ -26,6 +27,9 @@ class RoutineRepository(private val dao: RoutineDao, private val presetDao: Pres
         }
     }
 
+    suspend fun getPresetItems(presetId: Int): List<PresetItem> =
+        presetDao.getPresetItems(presetId)
+
     suspend fun loadPreset(presetId: Int): List<RoutineItem> =
         presetDao.getPresetItems(presetId).mapIndexed { index, it ->
             RoutineItem(name = it.name, durationMinutes = it.durationMinutes, order = index)
@@ -34,6 +38,17 @@ class RoutineRepository(private val dao: RoutineDao, private val presetDao: Pres
     suspend fun replaceAllItems(newItems: List<RoutineItem>) {
         dao.deleteAll()
         newItems.forEach { dao.insert(it) }
+    }
+
+    suspend fun updatePresetName(preset: RoutinePreset) = presetDao.updatePreset(preset)
+
+    suspend fun replacePresetItems(presetId: Int, items: List<RoutineItem>) {
+        presetDao.deletePresetItems(presetId)
+        items.forEachIndexed { index, item ->
+            presetDao.insertPresetItem(
+                PresetItem(presetId = presetId, name = item.name, durationMinutes = item.durationMinutes, order = index)
+            )
+        }
     }
 
     suspend fun deletePreset(preset: RoutinePreset) {

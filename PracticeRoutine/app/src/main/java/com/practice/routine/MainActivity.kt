@@ -21,8 +21,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.practice.routine.data.RoutineItem
-import com.practice.routine.data.RoutinePreset
 import com.practice.routine.databinding.ActivityMainBinding
+import com.practice.routine.ui.PresetListActivity
 import com.practice.routine.ui.RoutineAdapter
 import com.practice.routine.ui.RoutineViewModel
 import com.practice.routine.ui.SessionActivity
@@ -32,7 +32,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: RoutineViewModel by viewModels()
     private lateinit var adapter: RoutineAdapter
-    private var currentPresets: List<RoutinePreset> = emptyList()
 
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -67,7 +66,7 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.action_load_preset -> {
-                showLoadPresetDialog(currentPresets)
+                startActivity(Intent(this, PresetListActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -114,9 +113,6 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(items)
             binding.tvEmptyHint.visibility =
                 if (items.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
-        }
-        viewModel.presets.observe(this) { presets ->
-            currentPresets = presets
         }
     }
 
@@ -185,56 +181,6 @@ class MainActivity : AppCompatActivity() {
                     viewModel.saveCurrentAsPreset(name)
                     Toast.makeText(this, "'$name'으로 저장했습니다.", Toast.LENGTH_SHORT).show()
                 }
-            }
-            .setNegativeButton("취소", null)
-            .show()
-    }
-
-    private fun showLoadPresetDialog(presets: List<RoutinePreset>) {
-        if (presets.isEmpty()) {
-            Toast.makeText(this, "저장된 루틴이 없습니다.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val names = presets.map { it.name }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("루틴 불러오기")
-            .setItems(names) { _, which ->
-                val preset = presets[which]
-                AlertDialog.Builder(this)
-                    .setTitle("'${preset.name}' 불러오기")
-                    .setMessage("현재 루틴 목록이 이 루틴으로 교체됩니다. 계속할까요?")
-                    .setPositiveButton("불러오기") { _, _ ->
-                        viewModel.loadPreset(preset)
-                        Toast.makeText(this, "'${preset.name}'을 불러왔습니다.", Toast.LENGTH_SHORT).show()
-                    }
-                    .setNegativeButton("취소", null)
-                    .show()
-            }
-            .setNeutralButton("삭제 관리") { _, _ ->
-                showDeletePresetDialog(presets)
-            }
-            .setNegativeButton("닫기", null)
-            .show()
-    }
-
-    private fun showDeletePresetDialog(presets: List<RoutinePreset>) {
-        val names = presets.map { it.name }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("저장된 루틴 삭제")
-            .setItems(names) { _, which ->
-                val preset = presets[which]
-                AlertDialog.Builder(this)
-                    .setTitle("삭제")
-                    .setMessage("'${preset.name}'을(를) 삭제할까요?")
-                    .setPositiveButton("삭제") { _, _ ->
-                        viewModel.deletePreset(preset)
-                        Toast.makeText(this, "삭제했습니다.", Toast.LENGTH_SHORT).show()
-                    }
-                    .setNegativeButton("취소", null)
-                    .show()
             }
             .setNegativeButton("취소", null)
             .show()

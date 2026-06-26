@@ -28,6 +28,14 @@
             android:name=".ui.SessionActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.PresetListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.PresetEditActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.TimerService"
             android:exported="false"

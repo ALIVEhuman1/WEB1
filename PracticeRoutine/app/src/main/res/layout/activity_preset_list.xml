@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="@color/primary"
-        app:title="저장된 루틴"
+        app:title="프리셋 불러오기"
         app:titleTextColor="@color/white"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="@color/white" />
@@ -23,8 +23,10 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:padding="48dp"
-        android:text="저장된 루틴이 없습니다.\n메인 화면에서 ⋮ → 저장하기를 눌러보세요."
+        android:lineSpacingExtra="4dp"
+        android:text="저장된 프리셋이 없어요.\n메뉴의 '저장하기'로 현재 루틴을 보관하세요."
         android:textColor="@color/hint"
+        android:fontFamily="@font/pretendard_medium"
         android:textSize="15sp"
         android:visibility="gone" />
 
@@ -32,7 +34,7 @@
         android:id="@+id/rvPresets"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:padding="16dp"
+        android:padding="18dp"
         android:clipToPadding="false" />
 
 </LinearLayout>

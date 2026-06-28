@@ -15,7 +15,8 @@
 
         <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            app:elevation="6dp">
 
             <com.google.android.material.appbar.MaterialToolbar
                 android:id="@+id/toolbar"
@@ -24,79 +25,159 @@
                 android:background="@color/primary"
                 app:title="@string/app_name"
                 app:titleTextColor="@color/white"
-                app:navigationIcon="@drawable/ic_menu" />
+                app:titleTextAppearance="@style/TextAppearance.MaterialComponents.Headline6"
+                app:navigationIcon="@drawable/ic_menu"
+                app:navigationIconTint="@color/white" />
 
         </com.google.android.material.appbar.AppBarLayout>
 
-        <LinearLayout
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp"
             app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-            <TextView
-                android:id="@+id/tvEmptyHint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:padding="48dp"
-                android:text="루틴을 추가해서 연습을 시작하세요!\n오른쪽 아래 + 버튼을 눌러주세요."
-                android:textColor="@color/hint"
-                android:textSize="16sp"
-                android:visibility="gone" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvRoutines"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:paddingTop="18dp"
+                android:paddingBottom="150dp"
                 tools:listitem="@layout/item_routine" />
 
-            <Button
-                android:id="@+id/btnStart"
+            <!-- Empty state -->
+            <LinearLayout
+                android:id="@+id/tvEmptyHint"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:layout_marginTop="12dp"
-                android:backgroundTint="@color/primary"
-                android:text="▶ 연습 시작"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingHorizontal="24dp"
+                android:visibility="gone">
 
-        </LinearLayout>
+                <FrameLayout
+                    android:layout_width="88dp"
+                    android:layout_height="88dp"
+                    android:background="@drawable/bg_badge_slate"
+                    android:layout_marginBottom="20dp">
+
+                    <ImageView
+                        android:layout_width="42dp"
+                        android:layout_height="42dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_clock"
+                        app:tint="@color/hint"
+                        android:contentDescription="@null" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="아직 루틴이 없어요"
+                    android:textSize="18sp"
+                    android:fontFamily="@font/pretendard_bold"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp"
+                    android:text="우측 하단 + 버튼을 눌러\n첫 연습 루틴을 추가해 보세요."
+                    android:textSize="14sp"
+                    android:fontFamily="@font/pretendard_medium"
+                    android:textColor="@color/hint" />
+
+            </LinearLayout>
+
+            <!-- Bottom gradient + start button -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:orientation="vertical"
+                android:background="@drawable/bg_bottom_fade"
+                android:paddingHorizontal="18dp"
+                android:paddingTop="24dp"
+                android:paddingBottom="18dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStart"
+                    android:layout_width="match_parent"
+                    android:layout_height="60dp"
+                    android:text="연습 시작"
+                    android:textSize="18sp"
+                    android:fontFamily="@font/pretendard_extrabold"
+                    android:textColor="@color/white"
+                    android:backgroundTint="@color/primary"
+                    app:cornerRadius="18dp"
+                    app:icon="@drawable/ic_play_filled"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/white"
+                    app:iconSize="22dp" />
+
+            </LinearLayout>
+
+        </FrameLayout>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/fabAdd"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
             android:layout_gravity="bottom|end"
-            android:layout_margin="72dp"
+            android:layout_marginEnd="22dp"
+            android:layout_marginBottom="92dp"
             android:contentDescription="루틴 추가"
-            app:srcCompat="@android:drawable/ic_input_add"
-            app:backgroundTint="@color/accent" />
+            android:src="@drawable/ic_plus"
+            app:tint="@color/white"
+            app:backgroundTint="@color/accent"
+            app:borderWidth="0dp"
+            app:elevation="8dp"
+            app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Fab.Squircle" />
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-    <!-- Navigation Drawer (1/3 width, set in code) -->
+    <!-- Navigation Drawer -->
     <LinearLayout
         android:id="@+id/navDrawer"
-        android:layout_width="280dp"
+        android:layout_width="300dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:orientation="vertical"
         android:background="@color/card_background"
         android:elevation="8dp">
 
-        <!-- Drawer header -->
+        <!-- Gradient header -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="100dp"
-            android:background="@color/primary"
-            android:gravity="bottom|start"
-            android:paddingStart="20dp"
-            android:paddingBottom="16dp"
-            android:paddingEnd="20dp">
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_drawer_header"
+            android:paddingStart="22dp"
+            android:paddingEnd="22dp"
+            android:paddingTop="28dp"
+            android:paddingBottom="22dp">
+
+            <FrameLayout
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_icon_badge_white"
+                android:layout_marginBottom="14dp">
+
+                <ImageView
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_clock"
+                    app:tint="@color/white"
+                    android:contentDescription="@null" />
+
+            </FrameLayout>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -104,138 +185,72 @@
                 android:text="@string/app_name"
                 android:textColor="@color/white"
                 android:textSize="20sp"
-                android:textStyle="bold" />
+                android:fontFamily="@font/pretendard_extrabold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="v1.2"
+                android:textColor="@color/white_alpha"
+                android:textSize="12sp"
+                android:layout_marginTop="3dp" />
 
         </LinearLayout>
 
         <!-- Drawer items -->
         <LinearLayout
-            android:id="@+id/drawerItemSelect"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="☑"
-                android:textSize="18sp"
-                android:textColor="@color/text_secondary"
-                android:layout_marginEnd="16dp" />
+            <LinearLayout
+                android:id="@+id/drawerItemSelect"
+                style="@style/DrawerRow">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="선택 삭제"
-                android:textSize="16sp"
-                android:textColor="@color/text_primary" />
+                <FrameLayout style="@style/DrawerIconWrap" android:background="@drawable/bg_badge_blue">
+                    <ImageView style="@style/DrawerIcon" android:src="@drawable/ic_check_square" app:tint="@color/primary" />
+                </FrameLayout>
 
-        </LinearLayout>
+                <TextView style="@style/DrawerLabel" android:text="선택 삭제" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/hint"
-            android:alpha="0.3"
-            android:layout_marginStart="20dp"
-            android:layout_marginEnd="20dp" />
+            </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/drawerItemSave"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            <LinearLayout
+                android:id="@+id/drawerItemSave"
+                style="@style/DrawerRow">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="💾"
-                android:textSize="18sp"
-                android:layout_marginEnd="16dp" />
+                <FrameLayout style="@style/DrawerIconWrap" android:background="@drawable/bg_badge_purple">
+                    <ImageView style="@style/DrawerIcon" android:src="@drawable/ic_save" app:tint="@color/secondary" />
+                </FrameLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="저장하기"
-                android:textSize="16sp"
-                android:textColor="@color/text_primary" />
+                <TextView style="@style/DrawerLabel" android:text="저장하기" />
 
-        </LinearLayout>
+            </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/drawerItemLoad"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+            <LinearLayout
+                android:id="@+id/drawerItemLoad"
+                style="@style/DrawerRow">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📂"
-                android:textSize="18sp"
-                android:layout_marginEnd="16dp" />
+                <FrameLayout style="@style/DrawerIconWrap" android:background="@drawable/bg_badge_green">
+                    <ImageView style="@style/DrawerIcon" android:src="@drawable/ic_folder" app:tint="@color/accent" />
+                </FrameLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="불러오기"
-                android:textSize="16sp"
-                android:textColor="@color/text_primary" />
+                <TextView style="@style/DrawerLabel" android:text="불러오기" />
 
-        </LinearLayout>
+            </LinearLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/hint"
-            android:alpha="0.3"
-            android:layout_marginStart="20dp"
-            android:layout_marginEnd="20dp" />
+            <LinearLayout
+                android:id="@+id/drawerItemSettings"
+                style="@style/DrawerRow">
 
-        <LinearLayout
-            android:id="@+id/drawerItemSettings"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
+                <FrameLayout style="@style/DrawerIconWrap" android:background="@drawable/bg_badge_slate">
+                    <ImageView style="@style/DrawerIcon" android:src="@drawable/ic_settings" app:tint="@color/text_secondary" />
+                </FrameLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚙"
-                android:textSize="18sp"
-                android:textColor="@color/text_secondary"
-                android:layout_marginEnd="16dp" />
+                <TextView style="@style/DrawerLabel" android:text="설정" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="설정"
-                android:textSize="16sp"
-                android:textColor="@color/text_primary" />
+            </LinearLayout>
 
         </LinearLayout>
 

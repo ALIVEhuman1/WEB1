@@ -73,7 +73,7 @@ class RoutineAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = items[position]
-        holder.number.text = "${position + 1}."
+        holder.number.text = "${position + 1}"
         holder.name.text = item.name
         holder.duration.text = "${item.durationMinutes}분"
 

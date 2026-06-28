@@ -10,7 +10,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
+import com.practice.routine.R
 import com.practice.routine.data.RoutineItem
 import com.practice.routine.databinding.ActivitySessionBinding
 import com.practice.routine.service.TimerService
@@ -64,7 +64,7 @@ class SessionActivity : AppCompatActivity() {
             return
         }
 
-        setupList()
+        binding.toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
         setupButtons()
         setupBackHandler()
         initUI()
@@ -79,27 +79,30 @@ class SessionActivity : AppCompatActivity() {
 
     private fun initUI() {
         val item = items[0]
-        binding.tvCurrentStep.text = "1/${items.size}"
+        binding.tvCurrentStep.text = "1 / ${items.size}"
         binding.tvCurrentName.text = item.name
         binding.tvTimer.text = String.format("%02d:00", item.durationMinutes)
         binding.progressTimer.max = item.durationMinutes * 60
-        binding.progressTimer.progress = 0
-        val next = items.getOrNull(1)
+        binding.progressTimer.progress = item.durationMinutes * 60
+        setRingColor(R.color.primary)
+        binding.tvPausedLabel.visibility = View.GONE
+        updateNextCard(0)
+    }
+
+    private fun updateNextCard(index: Int) {
+        val next = items.getOrNull(index + 1)
         if (next != null) {
-            binding.tvNextLabel.visibility = View.VISIBLE
-            binding.tvNextStep.visibility = View.VISIBLE
-            binding.tvNextStep.text = "다음: ${next.name} (${next.durationMinutes}분)"
+            binding.nextCard.visibility = View.VISIBLE
+            binding.tvNextStep.text = "${next.name} · ${next.durationMinutes}분"
         } else {
-            binding.tvNextLabel.visibility = View.INVISIBLE
-            binding.tvNextStep.visibility = View.INVISIBLE
+            binding.nextCard.visibility = View.INVISIBLE
         }
     }
 
-    private fun setupList() {
-        binding.tvTotalRoutines.text = "총 ${items.size}개 루틴 · 총 ${items.sumOf { it.durationMinutes }}분"
-        binding.rvSessionList.layoutManager = LinearLayoutManager(this)
-        val adapter = SessionRoutineAdapter(items)
-        binding.rvSessionList.adapter = adapter
+    private fun setRingColor(colorRes: Int) {
+        binding.progressTimer.setIndicatorColor(
+            androidx.core.content.ContextCompat.getColor(this, colorRes)
+        )
     }
 
     private fun setupButtons() {
@@ -108,6 +111,9 @@ class SessionActivity : AppCompatActivity() {
             val action = if (isPaused) TimerService.ACTION_PAUSE else TimerService.ACTION_RESUME
             startService(Intent(this, TimerService::class.java).apply { this.action = action })
             binding.btnPauseResume.text = if (isPaused) "재개" else "일시정지"
+            binding.btnPauseResume.setIconResource(if (isPaused) R.drawable.ic_play_filled else R.drawable.ic_pause)
+            binding.tvPausedLabel.visibility = if (isPaused) View.VISIBLE else View.GONE
+            setRingColor(if (isPaused) R.color.hint else R.color.primary)
         }
 
         binding.btnNext.setOnClickListener {
@@ -187,15 +193,20 @@ class SessionActivity : AppCompatActivity() {
             // 알람 재생 실패 시 무음으로 진행
         }
 
-        binding.btnPauseResume.isEnabled = false
-        binding.btnNext.isEnabled = false
+        binding.tvTimer.text = "00:00"
+        binding.tvTimer.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.error))
+        binding.progressTimer.progress = 0
+        setRingColor(R.color.error)
+        binding.tvPausedLabel.visibility = View.GONE
+        binding.controlRow.visibility = View.GONE
         binding.btnConfirmNext.visibility = View.VISIBLE
 
         binding.btnConfirmNext.setOnClickListener {
             stopAlarm()
             binding.btnConfirmNext.visibility = View.GONE
-            binding.btnPauseResume.isEnabled = true
-            binding.btnNext.isEnabled = true
+            binding.controlRow.visibility = View.VISIBLE
+            binding.tvTimer.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.text_primary))
+            setRingColor(R.color.primary)
             binding.btnPauseResume.text = "일시정지"
             isPaused = false
             startService(Intent(this, TimerService::class.java).apply {
@@ -216,39 +227,37 @@ class SessionActivity : AppCompatActivity() {
         val mins = remainingSeconds / 60
         val secs = remainingSeconds % 60
 
-        binding.tvCurrentStep.text = "${index + 1}/${items.size}"
+        binding.tvCurrentStep.text = "${index + 1} / ${items.size}"
         binding.tvCurrentName.text = item.name
         binding.tvTimer.text = String.format("%02d:%02d", mins, secs)
+        binding.tvTimer.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.text_primary))
 
         val totalSeconds = item.durationMinutes * 60
-        val elapsed = totalSeconds - remainingSeconds
         binding.progressTimer.max = totalSeconds
-        binding.progressTimer.progress = elapsed.toInt()
+        binding.progressTimer.progress = remainingSeconds.toInt()
 
-        val next = items.getOrNull(index + 1)
-        if (next != null) {
-            binding.tvNextLabel.visibility = View.VISIBLE
-            binding.tvNextStep.visibility = View.VISIBLE
-            binding.tvNextStep.text = "다음: ${next.name} (${next.durationMinutes}분)"
-        } else {
-            binding.tvNextLabel.visibility = View.INVISIBLE
-            binding.tvNextStep.visibility = View.INVISIBLE
-        }
+        binding.tvPausedLabel.visibility = if (isPaused) View.VISIBLE else View.GONE
+        setRingColor(if (isPaused) R.color.hint else R.color.primary)
+
+        updateNextCard(index)
     }
 
     private fun markItemDone(index: Int) {
-        (binding.rvSessionList.adapter as? SessionRoutineAdapter)?.markDone(index)
+        // 세션 화면이 원형 타이머 중심으로 바뀌어 목록 표시는 사용하지 않음
     }
 
     private fun showAllDone() {
         stopAlarm()
         binding.btnConfirmNext.visibility = View.GONE
-        binding.tvCurrentName.text = "모든 루틴 완료!"
+        binding.controlRow.visibility = View.GONE
+        binding.tvCurrentName.text = "모든 루틴 완료! 👏"
         binding.tvTimer.text = "00:00"
-        binding.tvCurrentStep.text = "${items.size}/${items.size}"
-        binding.btnPauseResume.isEnabled = false
-        binding.btnNext.isEnabled = false
+        binding.tvTimer.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.accent))
+        binding.tvCurrentStep.text = "${items.size} / ${items.size}"
+        binding.nextCard.visibility = View.INVISIBLE
+        binding.tvPausedLabel.visibility = View.GONE
         binding.progressTimer.progress = binding.progressTimer.max
+        setRingColor(R.color.accent)
 
         AlertDialog.Builder(this)
             .setTitle("완료!")

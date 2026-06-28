@@ -23,6 +23,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
                 android:background="@color/primary"
+                android:theme="@style/ThemeOverlay.MaterialComponents.Dark.ActionBar"
                 app:title="@string/app_name"
                 app:titleTextColor="@color/white"
                 app:titleTextAppearance="@style/TextAppearance.MaterialComponents.Headline6"
@@ -190,7 +191,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="v1.2"
+                android:text="v1.3"
                 android:textColor="@color/white_alpha"
                 android:textSize="12sp"
                 android:layout_marginTop="3dp" />
@@ -203,18 +204,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="12dp">
-
-            <LinearLayout
-                android:id="@+id/drawerItemSelect"
-                style="@style/DrawerRow">
-
-                <FrameLayout style="@style/DrawerIconWrap" android:background="@drawable/bg_badge_blue">
-                    <ImageView style="@style/DrawerIcon" android:src="@drawable/ic_check_square" app:tint="@color/primary" />
-                </FrameLayout>
-
-                <TextView style="@style/DrawerLabel" android:text="선택 삭제" />
-
-            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/drawerItemSave"

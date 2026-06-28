@@ -89,10 +89,6 @@ class MainActivity : AppCompatActivity() {
         // Close drawer on background touch is default DrawerLayout behavior
 
         // Drawer item click handlers
-        binding.drawerItemSelect.setOnClickListener {
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-            enterSelectionMode()
-        }
         binding.drawerItemSave.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             showSavePresetDialog()
@@ -123,6 +119,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val hasItems = (viewModel.items.value?.isNotEmpty() == true)
+        menu.findItem(R.id.action_select_mode)?.isVisible = !isSelectionMode && hasItems
         menu.findItem(R.id.action_delete_selected)?.isVisible = isSelectionMode
         menu.findItem(R.id.action_cancel_select)?.isVisible = isSelectionMode
         return true
@@ -130,6 +128,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_select_mode -> {
+                enterSelectionMode()
+                true
+            }
             R.id.action_delete_selected -> {
                 val selected = adapter.getSelectedItems()
                 if (selected.isEmpty()) {
@@ -201,6 +203,7 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(items)
             binding.tvEmptyHint.visibility =
                 if (items.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+            invalidateOptionsMenu()
         }
     }
 

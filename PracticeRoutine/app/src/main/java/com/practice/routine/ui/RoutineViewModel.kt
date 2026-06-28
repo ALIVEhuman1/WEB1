@@ -43,4 +43,8 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteMultiple(items: List<RoutineItem>) = viewModelScope.launch {
         items.forEach { repo.delete(it) }
     }
+
+    fun deleteMultiplePresets(presets: List<RoutinePreset>) = viewModelScope.launch {
+        presets.forEach { repo.deletePreset(it) }
+    }
 }

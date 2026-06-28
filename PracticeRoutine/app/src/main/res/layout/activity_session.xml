@@ -87,7 +87,7 @@
                 android:layout_gravity="center"
                 android:max="100"
                 android:progress="100"
-                app:indeterminate="false"
+                android:indeterminate="false"
                 app:indicatorColor="@color/primary"
                 app:trackColor="@color/track_grey"
                 app:indicatorSize="252dp"

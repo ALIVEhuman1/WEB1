@@ -122,10 +122,10 @@ class TimerService : Service() {
         sendStepDoneNotification()
 
         if (!moreSetsInStep && !moreSteps) {
-            // 마지막 단계의 마지막 세트 - 전체 완료
+            // 마지막 단계의 마지막 세트 - 전체 완료(완주). 기록 후 종료.
             currentIndex++
             broadcastAllDone()
-            stopSelf()
+            logPracticeAndStop()
         } else {
             // 세트 전환 또는 단계 전환 대기
             waitingIndex = currentIndex
@@ -138,6 +138,32 @@ class TimerService : Service() {
     private fun confirmAndStartNext() {
         if (waitingIndex < 0) return
         if (waitingIsSetAdvance) beginNextSet() else beginNextStep()
+    }
+
+    // 완주 시에만 연습 기록 저장. stopSelf 가 서비스 scope 를 취소하므로
+    // insert 는 독립 IO scope 에서 실행하고, 완료 후 종료한다.
+    private fun logPracticeAndStop() {
+        val completedItems = ArrayList(items)
+        if (completedItems.isEmpty()) { stopSelf(); return }
+        val name = if (completedItems.size == 1) completedItems[0].name
+            else "${completedItems[0].name} 외 ${completedItems.size - 1}개"
+        val durationSeconds = completedItems.sumOf { it.durationMinutes * 60 * it.repeatCount }
+        val log = com.practice.routine.data.PracticeLog(
+            routineName = name,
+            completedAt = System.currentTimeMillis(),
+            durationSeconds = durationSeconds,
+            stepCount = completedItems.size
+        )
+        val appContext = applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                com.practice.routine.data.RoutineDatabase.getInstance(appContext)
+                    .practiceLogDao().insert(log)
+            } catch (_: Exception) {
+            } finally {
+                stopSelf()
+            }
+        }
     }
 
     // 세트 전환 지점 - 향후 '세트 사이 휴식'을 여기에 끼우면 됨

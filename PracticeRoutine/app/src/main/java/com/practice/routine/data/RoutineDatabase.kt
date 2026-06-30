@@ -8,13 +8,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [RoutineItem::class, RoutinePreset::class, PresetItem::class],
-    version = 4,
+    entities = [RoutineItem::class, RoutinePreset::class, PresetItem::class, PracticeLog::class],
+    version = 5,
     exportSchema = false
 )
 abstract class RoutineDatabase : RoomDatabase() {
     abstract fun routineDao(): RoutineDao
     abstract fun presetDao(): PresetDao
+    abstract fun practiceLogDao(): PracticeLogDao
 
     companion object {
         @Volatile private var INSTANCE: RoutineDatabase? = null
@@ -51,6 +52,18 @@ abstract class RoutineDatabase : RoomDatabase() {
             }
         }
 
+        // 연습 기록 테이블 추가. 기존 테이블에는 영향 없음.
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `practice_logs` " +
+                    "(`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`routineName` TEXT NOT NULL, `completedAt` INTEGER NOT NULL, " +
+                    "`durationSeconds` INTEGER NOT NULL, `stepCount` INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): RoutineDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -58,7 +71,7 @@ abstract class RoutineDatabase : RoomDatabase() {
                     RoutineDatabase::class.java,
                     "routine_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build().also { INSTANCE = it }
             }
     }

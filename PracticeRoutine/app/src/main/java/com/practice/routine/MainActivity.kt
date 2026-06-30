@@ -30,6 +30,7 @@ import com.practice.routine.ui.RoutineAdapter
 import com.practice.routine.ui.RoutineViewModel
 import com.practice.routine.ui.SessionActivity
 import com.practice.routine.ui.SettingsActivity
+import com.practice.routine.ui.StatsActivity
 
 class MainActivity : AppCompatActivity() {
 
@@ -89,6 +90,10 @@ class MainActivity : AppCompatActivity() {
         // Close drawer on background touch is default DrawerLayout behavior
 
         // Drawer item click handlers
+        binding.drawerItemStats.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startActivity(Intent(this, StatsActivity::class.java))
+        }
         binding.drawerItemSave.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             showSavePresetDialog()

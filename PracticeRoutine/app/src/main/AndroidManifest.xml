@@ -40,6 +40,10 @@
             android:name=".ui.SettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.StatsActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.TimerService"
             android:exported="false"

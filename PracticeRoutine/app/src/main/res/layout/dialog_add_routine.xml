@@ -77,7 +77,7 @@
             android:id="@+id/etNote"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="textmultiLine|textCapSentences"
+            android:inputType="textMultiLine|textCapSentences"
             android:gravity="top"
             android:minLines="2"
             android:maxLines="5"

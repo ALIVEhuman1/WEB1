@@ -17,19 +17,20 @@
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="@color/white" />
 
-    <!-- Center content -->
-    <LinearLayout
+    <!-- Center content (scrollable so landscape/tablet never clips, long notes scroll) -->
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center_horizontal"
-        android:padding="28dp">
+        android:fillViewport="true"
+        android:clipToPadding="false">
 
-        <Space
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="28dp">
 
         <!-- Step pill -->
         <LinearLayout
@@ -126,6 +127,58 @@
 
         </FrameLayout>
 
+        <!-- Step note (hidden when empty) -->
+        <LinearLayout
+            android:id="@+id/noteCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_round16"
+            android:elevation="1dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="14dp"
+            android:layout_marginBottom="22dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <ImageView
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:layout_marginEnd="6dp"
+                    android:src="@drawable/ic_edit"
+                    app:tint="@color/secondary"
+                    android:contentDescription="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="메모"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/pretendard_bold"
+                    android:textColor="@color/secondary"
+                    android:letterSpacing="0.02" />
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="15sp"
+                android:lineSpacingExtra="3dp"
+                android:fontFamily="@font/pretendard_medium"
+                android:textColor="@color/text_primary" />
+
+        </LinearLayout>
+
         <!-- Next preview card -->
         <LinearLayout
             android:id="@+id/nextCard"
@@ -161,12 +214,9 @@
 
         </LinearLayout>
 
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+        </LinearLayout>
 
-    </LinearLayout>
+    </ScrollView>
 
     <!-- Bottom controls -->
     <LinearLayout

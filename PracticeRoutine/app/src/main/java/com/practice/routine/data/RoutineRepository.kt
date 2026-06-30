@@ -22,7 +22,7 @@ class RoutineRepository(private val dao: RoutineDao, private val presetDao: Pres
         val presetId = presetDao.insertPreset(RoutinePreset(name = name)).toInt()
         currentItems.forEachIndexed { index, item ->
             presetDao.insertPresetItem(
-                PresetItem(presetId = presetId, name = item.name, durationMinutes = item.durationMinutes, order = index)
+                PresetItem(presetId = presetId, name = item.name, durationMinutes = item.durationMinutes, order = index, note = item.note)
             )
         }
     }
@@ -32,7 +32,7 @@ class RoutineRepository(private val dao: RoutineDao, private val presetDao: Pres
 
     suspend fun loadPreset(presetId: Int): List<RoutineItem> =
         presetDao.getPresetItems(presetId).mapIndexed { index, it ->
-            RoutineItem(name = it.name, durationMinutes = it.durationMinutes, order = index)
+            RoutineItem(name = it.name, durationMinutes = it.durationMinutes, order = index, note = it.note)
         }
 
     suspend fun replaceAllItems(newItems: List<RoutineItem>) {
@@ -46,7 +46,7 @@ class RoutineRepository(private val dao: RoutineDao, private val presetDao: Pres
         presetDao.deletePresetItems(presetId)
         items.forEachIndexed { index, item ->
             presetDao.insertPresetItem(
-                PresetItem(presetId = presetId, name = item.name, durationMinutes = item.durationMinutes, order = index)
+                PresetItem(presetId = presetId, name = item.name, durationMinutes = item.durationMinutes, order = index, note = item.note)
             )
         }
     }

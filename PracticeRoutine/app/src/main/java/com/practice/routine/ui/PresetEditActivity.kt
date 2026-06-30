@@ -91,7 +91,7 @@ class PresetEditActivity : AppCompatActivity() {
             }
             workingItems.clear()
             presetItems.forEachIndexed { index, pi ->
-                workingItems.add(RoutineItem(name = pi.name, durationMinutes = pi.durationMinutes, order = index))
+                workingItems.add(RoutineItem(name = pi.name, durationMinutes = pi.durationMinutes, order = index, note = pi.note))
             }
             adapter.submitList(workingItems.toList())
         }
@@ -101,10 +101,12 @@ class PresetEditActivity : AppCompatActivity() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_routine, null)
         val etName = dialogView.findViewById<TextInputEditText>(R.id.etRoutineName)
         val etMinutes = dialogView.findViewById<TextInputEditText>(R.id.etMinutes)
+        val etNote = dialogView.findViewById<TextInputEditText>(R.id.etNote)
 
         if (existing != null) {
             etName.setText(existing.name)
             etMinutes.setText(existing.durationMinutes.toString())
+            etNote.setText(existing.note)
         }
 
         AlertDialog.Builder(this)
@@ -113,15 +115,16 @@ class PresetEditActivity : AppCompatActivity() {
             .setPositiveButton("확인") { _, _ ->
                 val name = etName.text?.toString()?.trim() ?: ""
                 val mins = etMinutes.text?.toString()?.toIntOrNull() ?: 0
+                val note = etNote.text?.toString()?.trim()?.ifEmpty { null }
                 when {
                     name.isEmpty() -> Toast.makeText(this, "이름을 입력해주세요.", Toast.LENGTH_SHORT).show()
                     mins <= 0 -> Toast.makeText(this, "시간을 1분 이상 입력해주세요.", Toast.LENGTH_SHORT).show()
                     existingIndex >= 0 -> {
-                        workingItems[existingIndex] = workingItems[existingIndex].copy(name = name, durationMinutes = mins)
+                        workingItems[existingIndex] = workingItems[existingIndex].copy(name = name, durationMinutes = mins, note = note)
                         adapter.submitList(workingItems.toList())
                     }
                     else -> {
-                        workingItems.add(RoutineItem(name = name, durationMinutes = mins, order = workingItems.size))
+                        workingItems.add(RoutineItem(name = name, durationMinutes = mins, order = workingItems.size, note = note))
                         adapter.submitList(workingItems.toList())
                     }
                 }

@@ -87,6 +87,17 @@ class SessionActivity : AppCompatActivity() {
         setRingColor(R.color.primary)
         binding.tvPausedLabel.visibility = View.GONE
         updateNextCard(0)
+        updateNote(0)
+    }
+
+    private fun updateNote(index: Int) {
+        val note = items.getOrNull(index)?.note?.trim()
+        if (!note.isNullOrEmpty()) {
+            binding.tvNote.text = note
+            binding.noteCard.visibility = View.VISIBLE
+        } else {
+            binding.noteCard.visibility = View.GONE
+        }
     }
 
     private fun updateNextCard(index: Int) {
@@ -240,6 +251,7 @@ class SessionActivity : AppCompatActivity() {
         setRingColor(if (isPaused) R.color.hint else R.color.primary)
 
         updateNextCard(index)
+        updateNote(index)
     }
 
     private fun markItemDone(index: Int) {
@@ -255,6 +267,7 @@ class SessionActivity : AppCompatActivity() {
         binding.tvTimer.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.accent))
         binding.tvCurrentStep.text = "${items.size} / ${items.size}"
         binding.nextCard.visibility = View.INVISIBLE
+        binding.noteCard.visibility = View.GONE
         binding.tvPausedLabel.visibility = View.GONE
         binding.progressTimer.progress = binding.progressTimer.max
         setRingColor(R.color.accent)

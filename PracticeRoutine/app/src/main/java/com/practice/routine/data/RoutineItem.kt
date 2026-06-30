@@ -12,5 +12,6 @@ data class RoutineItem(
     val id: Int = 0,
     val name: String,
     val durationMinutes: Int,
-    val order: Int = 0
+    val order: Int = 0,
+    val note: String? = null
 ) : Parcelable

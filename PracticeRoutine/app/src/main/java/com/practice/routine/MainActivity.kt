@@ -236,10 +236,12 @@ class MainActivity : AppCompatActivity() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_routine, null)
         val etName = dialogView.findViewById<TextInputEditText>(R.id.etRoutineName)
         val etMinutes = dialogView.findViewById<TextInputEditText>(R.id.etMinutes)
+        val etNote = dialogView.findViewById<TextInputEditText>(R.id.etNote)
 
         if (existing != null) {
             etName.setText(existing.name)
             etMinutes.setText(existing.durationMinutes.toString())
+            etNote.setText(existing.note)
         }
 
         MaterialAlertDialogBuilder(this)
@@ -248,11 +250,12 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("저장") { _, _ ->
                 val name = etName.text?.toString()?.trim() ?: ""
                 val mins = etMinutes.text?.toString()?.toIntOrNull() ?: 0
+                val note = etNote.text?.toString()?.trim()?.ifEmpty { null }
                 when {
                     name.isEmpty() -> Toast.makeText(this, "이름을 입력해주세요.", Toast.LENGTH_SHORT).show()
                     mins <= 0 -> Toast.makeText(this, "시간을 1분 이상 입력해주세요.", Toast.LENGTH_SHORT).show()
-                    existing == null -> viewModel.add(name, mins)
-                    else -> viewModel.update(existing.copy(name = name, durationMinutes = mins))
+                    existing == null -> viewModel.add(name, mins, note)
+                    else -> viewModel.update(existing.copy(name = name, durationMinutes = mins, note = note))
                 }
             }
             .setNegativeButton("취소", null)

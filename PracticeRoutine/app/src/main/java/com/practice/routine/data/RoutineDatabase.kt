@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RoutineItem::class, RoutinePreset::class, PresetItem::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class RoutineDatabase : RoomDatabase() {
@@ -35,6 +35,14 @@ abstract class RoutineDatabase : RoomDatabase() {
             }
         }
 
+        // 단계별 메모(note) 컬럼 추가. nullable 컬럼이라 기존 데이터는 그대로 보존됨.
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `routine_items` ADD COLUMN `note` TEXT")
+                database.execSQL("ALTER TABLE `preset_items` ADD COLUMN `note` TEXT")
+            }
+        }
+
         fun getInstance(context: Context): RoutineDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -42,7 +50,7 @@ abstract class RoutineDatabase : RoomDatabase() {
                     RoutineDatabase::class.java,
                     "routine_db"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build().also { INSTANCE = it }
             }
     }

@@ -13,9 +13,9 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
     val presets: LiveData<List<RoutinePreset>> = repo.allPresets.asLiveData()
     val presetSummaries: LiveData<List<PresetSummary>> = repo.presetSummaries.asLiveData()
 
-    fun add(name: String, minutes: Int, note: String? = null) = viewModelScope.launch {
+    fun add(name: String, minutes: Int, note: String? = null, repeatCount: Int = 1) = viewModelScope.launch {
         val currentCount = repo.getAllOnce().size
-        repo.insert(RoutineItem(name = name, durationMinutes = minutes, order = currentCount, note = note))
+        repo.insert(RoutineItem(name = name, durationMinutes = minutes, order = currentCount, note = note, repeatCount = repeatCount))
     }
 
     fun update(item: RoutineItem) = viewModelScope.launch { repo.update(item) }

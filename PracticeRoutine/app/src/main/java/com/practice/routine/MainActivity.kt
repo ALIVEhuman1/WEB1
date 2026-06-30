@@ -237,11 +237,13 @@ class MainActivity : AppCompatActivity() {
         val etName = dialogView.findViewById<TextInputEditText>(R.id.etRoutineName)
         val etMinutes = dialogView.findViewById<TextInputEditText>(R.id.etMinutes)
         val etNote = dialogView.findViewById<TextInputEditText>(R.id.etNote)
+        val etRepeat = dialogView.findViewById<TextInputEditText>(R.id.etRepeat)
 
         if (existing != null) {
             etName.setText(existing.name)
             etMinutes.setText(existing.durationMinutes.toString())
             etNote.setText(existing.note)
+            etRepeat.setText(existing.repeatCount.toString())
         }
 
         MaterialAlertDialogBuilder(this)
@@ -251,11 +253,12 @@ class MainActivity : AppCompatActivity() {
                 val name = etName.text?.toString()?.trim() ?: ""
                 val mins = etMinutes.text?.toString()?.toIntOrNull() ?: 0
                 val note = etNote.text?.toString()?.trim()?.ifEmpty { null }
+                val sets = (etRepeat.text?.toString()?.toIntOrNull() ?: 1).coerceAtLeast(1)
                 when {
                     name.isEmpty() -> Toast.makeText(this, "이름을 입력해주세요.", Toast.LENGTH_SHORT).show()
                     mins <= 0 -> Toast.makeText(this, "시간을 1분 이상 입력해주세요.", Toast.LENGTH_SHORT).show()
-                    existing == null -> viewModel.add(name, mins, note)
-                    else -> viewModel.update(existing.copy(name = name, durationMinutes = mins, note = note))
+                    existing == null -> viewModel.add(name, mins, note, sets)
+                    else -> viewModel.update(existing.copy(name = name, durationMinutes = mins, note = note, repeatCount = sets))
                 }
             }
             .setNegativeButton("취소", null)

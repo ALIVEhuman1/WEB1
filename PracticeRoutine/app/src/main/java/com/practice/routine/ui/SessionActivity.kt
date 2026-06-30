@@ -27,20 +27,23 @@ class SessionActivity : AppCompatActivity() {
         override fun onReceive(ctx: Context, intent: Intent) {
             val index = intent.getIntExtra(TimerService.EXTRA_CURRENT_INDEX, 0)
             val remaining = intent.getLongExtra(TimerService.EXTRA_REMAINING_SECONDS, 0)
+            val set = intent.getIntExtra(TimerService.EXTRA_CURRENT_SET, 1)
+            val total = intent.getIntExtra(TimerService.EXTRA_TOTAL_SETS, 1)
             currentIndex = index
             updateUI(index, remaining)
+            updateSetLabel(set, total)
         }
     }
 
     private val stepDoneReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             val doneIndex = intent.getIntExtra(TimerService.EXTRA_CURRENT_INDEX, 0)
+            val set = intent.getIntExtra(TimerService.EXTRA_CURRENT_SET, 1)
+            val total = intent.getIntExtra(TimerService.EXTRA_TOTAL_SETS, 1)
             markItemDone(doneIndex)
-            val nextItem = items.getOrNull(doneIndex + 1)
-            if (nextItem != null) {
-                showNextConfirmUI(doneIndex, nextItem)
-            }
-            // 마지막 루틴이면 allDoneReceiver가 처리
+            updateSetLabel(set, total)
+            // 서비스는 '대기' 상태일 때만 STEP_DONE 을 보냄(전체 완료는 ALL_DONE)
+            showNextConfirmUI(doneIndex)
         }
     }
 
@@ -88,6 +91,16 @@ class SessionActivity : AppCompatActivity() {
         binding.tvPausedLabel.visibility = View.GONE
         updateNextCard(0)
         updateNote(0)
+        updateSetLabel(1, items[0].repeatCount)
+    }
+
+    private fun updateSetLabel(currentSet: Int, totalSets: Int) {
+        if (totalSets > 1) {
+            binding.tvSetLabel.text = "$currentSet/$totalSets 세트"
+            binding.tvSetLabel.visibility = View.VISIBLE
+        } else {
+            binding.tvSetLabel.visibility = View.GONE
+        }
     }
 
     private fun updateNote(index: Int) {
@@ -184,7 +197,7 @@ class SessionActivity : AppCompatActivity() {
         startForegroundService(intent)
     }
 
-    private fun showNextConfirmUI(doneIndex: Int, nextItem: RoutineItem) {
+    private fun showNextConfirmUI(doneIndex: Int) {
         val prefs = getSharedPreferences(SettingsActivity.PREFS_NAME, MODE_PRIVATE)
         val uriStr = prefs.getString(SettingsActivity.PREF_ALARM_URI, null)
         val volumePct = prefs.getInt(SettingsActivity.PREF_ALARM_VOLUME, SettingsActivity.DEFAULT_VOLUME)
@@ -269,6 +282,7 @@ class SessionActivity : AppCompatActivity() {
         binding.nextCard.visibility = View.INVISIBLE
         binding.noteCard.visibility = View.GONE
         binding.tvPausedLabel.visibility = View.GONE
+        binding.tvSetLabel.visibility = View.GONE
         binding.progressTimer.progress = binding.progressTimer.max
         setRingColor(R.color.accent)
 
@@ -289,13 +303,12 @@ class SessionActivity : AppCompatActivity() {
         registerReceiver(allDoneReceiver, IntentFilter(TimerService.BROADCAST_ALL_DONE),
             RECEIVER_NOT_EXPORTED)
 
-        // 앱이 백그라운드에 있는 동안 루틴이 완료된 경우 버튼으로 표시
+        // 앱이 백그라운드에 있는 동안 단계/세트가 완료돼 대기 중이면 버튼으로 복원
         val waitIdx = TimerService.waitingIndex
         if (waitIdx >= 0) {
-            val nextItem = items.getOrNull(waitIdx + 1)
-            if (nextItem != null) {
-                showNextConfirmUI(waitIdx, nextItem)
-            }
+            val total = items.getOrNull(waitIdx)?.repeatCount ?: 1
+            updateSetLabel(TimerService.currentSet, total)
+            showNextConfirmUI(waitIdx)
         }
     }
 

@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RoutineItem::class, RoutinePreset::class, PresetItem::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class RoutineDatabase : RoomDatabase() {
@@ -43,6 +43,14 @@ abstract class RoutineDatabase : RoomDatabase() {
             }
         }
 
+        // 단계 반복(세트) 컬럼 추가. NOT NULL DEFAULT 1 이라 기존 항목은 1세트로 채워짐.
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `routine_items` ADD COLUMN `repeatCount` INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE `preset_items` ADD COLUMN `repeatCount` INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun getInstance(context: Context): RoutineDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -50,7 +58,7 @@ abstract class RoutineDatabase : RoomDatabase() {
                     RoutineDatabase::class.java,
                     "routine_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build().also { INSTANCE = it }
             }
     }

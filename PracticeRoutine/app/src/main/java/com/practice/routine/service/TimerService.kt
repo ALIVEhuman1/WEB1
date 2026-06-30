@@ -28,10 +28,17 @@ class TimerService : Service() {
         const val BROADCAST_ALL_DONE = "com.practice.routine.ALL_DONE"
         const val EXTRA_CURRENT_INDEX = "EXTRA_CURRENT_INDEX"
         const val EXTRA_REMAINING_SECONDS = "EXTRA_REMAINING_SECONDS"
+        const val EXTRA_CURRENT_SET = "EXTRA_CURRENT_SET"
+        const val EXTRA_TOTAL_SETS = "EXTRA_TOTAL_SETS"
+        const val EXTRA_IS_SET_ADVANCE = "EXTRA_IS_SET_ADVANCE"
 
         @Volatile var isRunning = false
         // 완료 후 확인 대기 중인 단계 인덱스. -1이면 대기 중 아님
         @Volatile var waitingIndex = -1
+        // 현재 진행 중인 세트(1-base). 화면 회전/백그라운드 복원용 static
+        @Volatile var currentSet = 1
+        // 대기 중인 전환이 '세트 전환'이면 true, '단계 전환'이면 false
+        @Volatile var waitingIsSetAdvance = false
     }
 
     private val binder = TimerBinder()
@@ -62,7 +69,9 @@ class TimerService : Service() {
                 if (newItems != null) {
                     items = newItems
                     currentIndex = 0
+                    currentSet = 1
                     waitingIndex = -1
+                    waitingIsSetAdvance = false
                     startCurrentStep()
                 }
             }
@@ -106,28 +115,45 @@ class TimerService : Service() {
     }
 
     private fun onStepComplete() {
-        val completedIndex = currentIndex
-        val isLastStep = completedIndex >= items.size - 1
+        val item = items.getOrNull(currentIndex) ?: return
+        val moreSetsInStep = currentSet < item.repeatCount
+        val moreSteps = currentIndex < items.size - 1
 
         sendStepDoneNotification()
-        broadcastStepDone()
 
-        if (isLastStep) {
-            // 마지막 루틴 - 자동으로 완료 처리
+        if (!moreSetsInStep && !moreSteps) {
+            // 마지막 단계의 마지막 세트 - 전체 완료
             currentIndex++
             broadcastAllDone()
             stopSelf()
         } else {
-            // 다음 루틴이 있으면 확인 대기
-            waitingIndex = completedIndex
+            // 세트 전환 또는 단계 전환 대기
+            waitingIndex = currentIndex
+            waitingIsSetAdvance = moreSetsInStep
+            broadcastStepDone()
             showWaitingNotification()
         }
     }
 
     private fun confirmAndStartNext() {
         if (waitingIndex < 0) return
-        currentIndex = waitingIndex + 1
+        if (waitingIsSetAdvance) beginNextSet() else beginNextStep()
+    }
+
+    // 세트 전환 지점 - 향후 '세트 사이 휴식'을 여기에 끼우면 됨
+    private fun beginNextSet() {
         waitingIndex = -1
+        waitingIsSetAdvance = false
+        currentSet++
+        startCurrentStep()
+    }
+
+    // 단계 전환 지점
+    private fun beginNextStep() {
+        waitingIndex = -1
+        waitingIsSetAdvance = false
+        currentIndex++
+        currentSet = 1
         startCurrentStep()
     }
 
@@ -139,25 +165,35 @@ class TimerService : Service() {
         isPaused = false
     }
 
+    // 스킵: 현재 단계의 남은 세트까지 모두 건너뛰고 다음 단계로
     fun skipToNext() {
         timerJob?.cancel()
         waitingIndex = -1
+        waitingIsSetAdvance = false
         currentIndex++
+        currentSet = 1
         startCurrentStep()
     }
 
     private fun broadcastTick() {
+        val total = items.getOrNull(currentIndex)?.repeatCount ?: 1
         sendBroadcast(Intent(BROADCAST_TICK).apply {
             setPackage(packageName)
             putExtra(EXTRA_CURRENT_INDEX, currentIndex)
             putExtra(EXTRA_REMAINING_SECONDS, remainingSeconds)
+            putExtra(EXTRA_CURRENT_SET, currentSet)
+            putExtra(EXTRA_TOTAL_SETS, total)
         })
     }
 
     private fun broadcastStepDone() {
+        val total = items.getOrNull(currentIndex)?.repeatCount ?: 1
         sendBroadcast(Intent(BROADCAST_STEP_DONE).apply {
             setPackage(packageName)
             putExtra(EXTRA_CURRENT_INDEX, currentIndex)
+            putExtra(EXTRA_CURRENT_SET, currentSet)
+            putExtra(EXTRA_TOTAL_SETS, total)
+            putExtra(EXTRA_IS_SET_ADVANCE, waitingIsSetAdvance)
         })
     }
 
@@ -194,7 +230,21 @@ class TimerService : Service() {
 
     private fun showWaitingNotification() {
         val doneItem = items.getOrNull(waitingIndex) ?: return
-        val nextItem = items.getOrNull(waitingIndex + 1) ?: return
+        val nextItem = items.getOrNull(waitingIndex + 1)
+
+        // 세트 전환이면 같은 단계의 다음 세트, 아니면 다음 단계를 안내
+        val nextLabel: String
+        val bigLabel: String
+        if (waitingIsSetAdvance) {
+            nextLabel = "${doneItem.name} · ${currentSet + 1}/${doneItem.repeatCount}세트"
+            bigLabel = "다음 세트: '${doneItem.name}' (${currentSet + 1}/${doneItem.repeatCount})\n준비되면 '다음 시작' 버튼을 눌러주세요."
+        } else if (nextItem != null) {
+            nextLabel = "${nextItem.name} (${nextItem.durationMinutes}분)"
+            bigLabel = "다음: '${nextItem.name}' (${nextItem.durationMinutes}분)\n준비되면 '다음 시작' 버튼을 눌러주세요."
+        } else {
+            nextLabel = ""
+            bigLabel = "준비되면 '다음 시작' 버튼을 눌러주세요."
+        }
 
         val sessionIntent = Intent(this, SessionActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -223,9 +273,8 @@ class TimerService : Service() {
         nm.notify(NOTIF_ID, NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_timer)
             .setContentTitle("'${doneItem.name}' 완료!")
-            .setContentText("다음: ${nextItem.name} (${nextItem.durationMinutes}분)")
-            .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("다음: '${nextItem.name}' (${nextItem.durationMinutes}분)\n준비되면 '다음 시작' 버튼을 눌러주세요."))
+            .setContentText(if (nextLabel.isNotEmpty()) "다음: $nextLabel" else "준비되면 '다음 시작'을 눌러주세요.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigLabel))
             .setOngoing(true)
             .setContentIntent(pi)
             .addAction(R.drawable.ic_skip, "다음 시작", confirmPi)
@@ -267,7 +316,11 @@ class TimerService : Service() {
 
         val mins = secondsLeft / 60
         val secs = secondsLeft % 60
-        val progress = "${currentIndex + 1}/${items.size}"
+        val totalSets = items.getOrNull(currentIndex)?.repeatCount ?: 1
+        val progress = if (totalSets > 1)
+            "${currentIndex + 1}/${items.size} · 세트 $currentSet/$totalSets"
+        else
+            "${currentIndex + 1}/${items.size}"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_timer)
@@ -314,6 +367,8 @@ class TimerService : Service() {
     override fun onDestroy() {
         isRunning = false
         waitingIndex = -1
+        waitingIsSetAdvance = false
+        currentSet = 1
         timerJob?.cancel()
         scope.cancel()
         super.onDestroy()

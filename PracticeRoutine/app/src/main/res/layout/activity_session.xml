@@ -65,6 +65,22 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/tvSetLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_pill_white"
+            android:elevation="2dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:textSize="13sp"
+            android:fontFamily="@font/pretendard_bold"
+            android:textColor="@color/accent"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/tvCurrentName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

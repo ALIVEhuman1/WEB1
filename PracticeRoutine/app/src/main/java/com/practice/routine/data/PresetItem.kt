@@ -10,5 +10,6 @@ data class PresetItem(
     val name: String,
     val durationMinutes: Int,
     val order: Int = 0,
-    val note: String? = null
+    val note: String? = null,
+    val repeatCount: Int = 1
 )

@@ -81,7 +81,7 @@ print(df.head())
 | `run_daily.py` | 실행 트리거 (중복실행 방지 락 → 수집 → 실패 알림), cron 진입점 |
 | `logging_utils.py` | 로그 타임스탬프를 KST로 고정 |
 | `lock.py` | 중복 실행 방지 파일 락 |
-| `alerts.py` | 수집 실패 시 Slack 웹훅 알림 (선택) |
+| `alerts.py` | 수집 실패 시 Discord 웹훅 알림 (선택) |
 
 ## 주의사항
 
@@ -136,7 +136,8 @@ nano .env          # KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO 채우기
 chmod 600 .env      # 소유자만 읽기/쓰기 가능하도록 권한 제한
 ```
 
-`SLACK_WEBHOOK_URL`을 채워두면 수집 실패 시 Slack으로 알림을 받을 수 있습니다 (선택).
+`DISCORD_WEBHOOK_URL`을 채워두면 수집 실패 시 Discord로 알림을 받을 수 있습니다 (선택). Discord
+채널 설정 → 연동 → 웹훅 → 새 웹훅에서 URL을 발급받으면 됩니다.
 
 ### 7-5. cron으로 매일 장마감 후 자동 실행
 
@@ -149,7 +150,7 @@ crontab -e
 40 15 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python run_daily.py
 ```
 
-`run_daily.py`가 중복 실행 방지 락(`lock.py`)을 쥐고 수집한 뒤, 실패 종목이 있으면 Slack 알림까지
+`run_daily.py`가 중복 실행 방지 락(`lock.py`)을 쥐고 수집한 뒤, 실패 종목이 있으면 Discord 알림까지
 보내므로 별도 스크립트 없이 이 한 줄이면 됩니다. 실행 로그는 `logs/collector.log`에 쌓입니다.
 
 ### 7-6. 방화벽 관련 참고
@@ -164,6 +165,6 @@ crontab -e
 - **토큰 캐시 파일 권한**: `.kis_token_cache.json`도 `chmod 600`으로 자동 생성.
 - **타임존**: VM이 UTC로 설정돼 있어도 로그 타임스탬프는 항상 KST로 기록 (`logging_utils.py`).
 - **중복 실행 방지**: cron이 이전 실행 종료 전에 재트리거해도 파일 락으로 이번 실행을 건너뜀 (`lock.py`).
-- **실패 알림**: `SLACK_WEBHOOK_URL` 설정 시 실패 종목이 있으면 Slack으로 알림 (`alerts.py`).
+- **실패 알림**: `DISCORD_WEBHOOK_URL` 설정 시 실패 종목이 있으면 Discord로 알림 (`alerts.py`).
 - **메모리 제약**: e2-micro(1GB)는 무거운 백테스트/대량 데이터 처리에 부적합하므로, 그런 작업은
   로컬 PC에서 `db.get_candles_df()`로 DB를 읽어와 처리하고, VM은 실거래 봇 실행/대시보드 서빙 전용으로 씁니다.

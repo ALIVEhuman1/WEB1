@@ -57,7 +57,22 @@ python main.py
 40 15 * * 1-5 cd /path/to/quant-bot && /path/to/venv/bin/python run_daily.py
 ```
 
-## 6. 저장된 데이터 조회 (백테스트용)
+## 6. 야간 완결성 체크 (선택, 상시 운영 시 권장)
+
+장마감 직후 수집에서 API 순간 장애 등으로 일부 분봉이 빠질 수 있습니다. 정규장은
+09:00~15:30(390분)이므로, 종목별 저장된 분봉 수가 이 기준의 90% 미만이면 "부족"으로 보고
+해당 종목만 다시 수집합니다.
+
+```bash
+python run_completeness_check.py
+```
+
+- watchlist 전 종목이 다 부족하면 실제 문제보다 휴장일일 가능성이 높다고 보고 재수집을 건너뜁니다
+  (KRX 공휴일 캘린더 연동은 아직 안 되어 있어 이 휴리스틱으로 오탐을 줄이는 정도입니다).
+- 재수집 후에도 기준 미달인 종목이 있으면 `DISCORD_WEBHOOK_URL` 설정 시 알림을 보냅니다.
+- 로그는 `logs/completeness.log`에 쌓입니다.
+
+## 7. 저장된 데이터 조회 (백테스트용)
 
 ```python
 from db import get_candles_df
@@ -81,7 +96,9 @@ print(df.head())
 | `run_daily.py` | 실행 트리거 (중복실행 방지 락 → 수집 → 실패 알림), cron 진입점 |
 | `logging_utils.py` | 로그 타임스탬프를 KST로 고정 |
 | `lock.py` | 중복 실행 방지 파일 락 |
-| `alerts.py` | 수집 실패 시 Discord 웹훅 알림 (선택) |
+| `alerts.py` | 수집 실패/완결성 부족 시 Discord 웹훅 알림 (선택) |
+| `completeness.py` | 당일 분봉 개수 완결성 체크 및 부족분 재수집 |
+| `run_completeness_check.py` | 완결성 체크 실행 트리거 (야간 cron 진입점) |
 
 ## 주의사항
 
@@ -89,20 +106,20 @@ print(df.head())
   실전투자용 앱키/시크릿을 사용해야 합니다.
 - 토큰 캐시(`.kis_token_cache.json`)와 DB 파일(`candles.db`)은 git에 커밋되지 않습니다.
 
-## 7. GCP VM에 배포하기
+## 8. GCP VM에 배포하기
 
 이 봇은 GCP e2-micro(무료 티어) VM에 상시 배포하는 걸 전제로 합니다. VM은 디스크가 영구적이라
 DB/토큰 캐시가 재시작해도 그대로 유지되고, 비밀값도 Secret Manager 없이 VM 안의 `.env` 파일로
 충분합니다 (별도 GCP API 연동 불필요).
 
-### 7-1. 브라우저 SSH로 접속 후 기본 패키지 설치
+### 8-1. 브라우저 SSH로 접속 후 기본 패키지 설치
 
 ```bash
 sudo apt update
 sudo apt install -y python3-venv python3-pip git
 ```
 
-### 7-2. 스왑 파일 추가 (필수 권장)
+### 8-2. 스왑 파일 추가 (필수 권장)
 
 e2-micro는 메모리가 1GB뿐이라 `pip install pandas` 같은 빌드 중 OOM으로 세션이 끊기는 경우가
 흔합니다. 스왑 파일을 만들어두면 안전합니다.
@@ -115,7 +132,7 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### 7-3. 코드 배치 및 가상환경 설정
+### 8-3. 코드 배치 및 가상환경 설정
 
 ```bash
 git clone <이 저장소 URL>
@@ -125,7 +142,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 7-4. .env 설정
+### 8-4. .env 설정
 
 로컬과 동일하게 `.env.example`을 복사해서 채웁니다 (2번 항목 참고). VM에서는 이 파일에
 직접 앱키/시크릿/계좌번호를 넣으면 됩니다.
@@ -139,7 +156,7 @@ chmod 600 .env      # 소유자만 읽기/쓰기 가능하도록 권한 제한
 `DISCORD_WEBHOOK_URL`을 채워두면 수집 실패 시 Discord로 알림을 받을 수 있습니다 (선택). Discord
 채널 설정 → 연동 → 웹훅 → 새 웹훅에서 URL을 발급받으면 됩니다.
 
-### 7-5. cron으로 매일 장마감 후 자동 실행
+### 8-5. cron으로 매일 장마감 후 자동 실행
 
 ```bash
 crontab -e
@@ -153,7 +170,14 @@ crontab -e
 `run_daily.py`가 중복 실행 방지 락(`lock.py`)을 쥐고 수집한 뒤, 실패 종목이 있으면 Discord 알림까지
 보내므로 별도 스크립트 없이 이 한 줄이면 됩니다. 실행 로그는 `logs/collector.log`에 쌓입니다.
 
-### 7-6. 방화벽 관련 참고
+야간 완결성 체크(6번 항목)도 같이 등록해두면 좋습니다.
+
+```cron
+# 매일(월~금) 22:00 KST에 완결성 체크 + 부족분 재수집
+0 22 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python run_completeness_check.py
+```
+
+### 8-6. 방화벽 관련 참고
 
 인스턴스에 HTTP(80)/HTTPS(443) 인바운드가 열려 있는데, 이 분봉 수집기 자체는 KIS API로 나가는
 아웃바운드 호출만 하므로 인바운드 포트가 필요 없습니다. 80/443은 이후 단계에서 FastAPI 대시보드를
@@ -166,5 +190,7 @@ crontab -e
 - **타임존**: VM이 UTC로 설정돼 있어도 로그 타임스탬프는 항상 KST로 기록 (`logging_utils.py`).
 - **중복 실행 방지**: cron이 이전 실행 종료 전에 재트리거해도 파일 락으로 이번 실행을 건너뜀 (`lock.py`).
 - **실패 알림**: `DISCORD_WEBHOOK_URL` 설정 시 실패 종목이 있으면 Discord로 알림 (`alerts.py`).
+- **야간 완결성 체크**: 장 마감 수집에서 빠진 분봉을 22:00에 한 번 더 검증/재수집 (`completeness.py`),
+  VM이 24시간 떠 있는 걸 활용해 데이터 신뢰도를 높입니다.
 - **메모리 제약**: e2-micro(1GB)는 무거운 백테스트/대량 데이터 처리에 부적합하므로, 그런 작업은
   로컬 PC에서 `db.get_candles_df()`로 DB를 읽어와 처리하고, VM은 실거래 봇 실행/대시보드 서빙 전용으로 씁니다.

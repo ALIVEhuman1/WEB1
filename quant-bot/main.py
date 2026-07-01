@@ -9,6 +9,7 @@ import time
 
 import config
 import db
+import gcs_sync
 from collector import fetch_full_day_candles
 from kis_auth import get_access_token
 from rate_limiter import chunk, get_batch_plan
@@ -22,8 +23,13 @@ def load_watchlist() -> list[str]:
 
 
 def collect_and_store(watchlist: list[str] | None = None) -> dict:
-    """watchlist의 모든 종목에 대해 당일 분봉을 수집하고 DB에 저장한다."""
+    """watchlist의 모든 종목에 대해 당일 분봉을 수집하고 DB에 저장한다.
+
+    GCS_BUCKET_NAME이 설정되어 있으면(Cloud Run Job처럼 실행마다 컨테이너가
+    초기화되는 환경) 실행 전 GCS에서 기존 DB를 내려받고, 종료 후 다시 올린다.
+    """
     watchlist = watchlist if watchlist is not None else load_watchlist()
+    gcs_sync.download_db()
     db.init_db()
 
     access_token = get_access_token()
@@ -56,9 +62,12 @@ def collect_and_store(watchlist: list[str] | None = None) -> dict:
         "수집 완료: 성공 %d/%d, 저장 %d행, 실패 %s",
         summary["success"], summary["total_stocks"], summary["rows_saved"], summary["failed"],
     )
+    gcs_sync.upload_db()
     return summary
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    from logging_utils import configure_logging
+
+    configure_logging()
     collect_and_store()

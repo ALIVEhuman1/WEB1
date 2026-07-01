@@ -4,6 +4,7 @@ KIS는 토큰 재발급에 분당 호출 제한이 있어, 만료 임박(REFRESH
 캐시된 토큰을 그대로 재사용한다.
 """
 import json
+import os
 from datetime import datetime, timedelta
 
 import requests
@@ -36,6 +37,7 @@ def _write_cache(access_token: str, expires_at: datetime) -> None:
     }
     with open(config.TOKEN_CACHE_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f)
+    os.chmod(config.TOKEN_CACHE_PATH, 0o600)
 
 
 @retry_with_backoff(max_retries=3, base_delay=1.0, exceptions=(requests.RequestException,))

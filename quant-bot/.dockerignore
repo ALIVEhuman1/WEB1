@@ -1,10 +1,10 @@
 .env
-*.db
-*.sqlite3
-.kis_token_cache.json
-.collector.lock
-logs/
+venv/
+.venv/
 __pycache__/
 *.pyc
-.venv/
-venv/
+*.db
+logs/
+.kis_token_cache.json
+.collector.lock
+.git/

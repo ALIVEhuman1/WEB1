@@ -70,7 +70,7 @@ print(df.head())
 
 | 파일 | 역할 |
 |---|---|
-| `config.py` | `.env`/Secret Manager 로드, 모의/실전 base_url 분리 |
+| `config.py` | `.env` 로드, 모의/실전 base_url 분리 |
 | `kis_auth.py` | OAuth 접근토큰 발급 및 파일 캐싱 (권한 600) |
 | `collector.py` | 주식당일분봉조회 API 호출 및 파싱 (페이지네이션으로 당일 전체 수집) |
 | `rate_limiter.py` | 종목 수 기반 배치 크기/딜레이 계산 |
@@ -78,12 +78,10 @@ print(df.head())
 | `db.py` | SQLite 스키마, UPSERT, pandas 조회 함수 |
 | `watchlist.json` | 관심종목 코드 목록 |
 | `main.py` | 수집 로직 본체 (watchlist → 수집 → 저장) |
-| `run_daily.py` | 실행 트리거 (락 → 수집 → 실패 알림), cron/Cloud Run Job 진입점 |
+| `run_daily.py` | 실행 트리거 (중복실행 방지 락 → 수집 → 실패 알림), cron 진입점 |
 | `logging_utils.py` | 로그 타임스탬프를 KST로 고정 |
 | `lock.py` | 중복 실행 방지 파일 락 |
 | `alerts.py` | 수집 실패 시 Slack 웹훅 알림 (선택) |
-| `gcs_sync.py` | GCS에 DB 백업/복원 (Cloud Run Job용, 선택) |
-| `Dockerfile` | Cloud Run Job 배포용 컨테이너 이미지 |
 
 ## 주의사항
 
@@ -91,75 +89,81 @@ print(df.head())
   실전투자용 앱키/시크릿을 사용해야 합니다.
 - 토큰 캐시(`.kis_token_cache.json`)와 DB 파일(`candles.db`)은 git에 커밋되지 않습니다.
 
-## 7. GCP(Google Cloud)에 배포하기
+## 7. GCP VM에 배포하기
 
-이 봇은 **Cloud Run Job + Cloud Scheduler** 조합으로 배포하는 걸 권장합니다 (서버 상시 운영 불필요,
-장마감 후 정해진 시간에만 컨테이너가 떠서 수집하고 종료). Cloud Run Job은 실행마다 컨테이너가
-새로 뜨기 때문에, 로컬 디스크에만 DB를 두면 다음 실행 때 데이터가 사라집니다. 이를 위해
-`gcs_sync.py`가 실행 시작 시 GCS에서 DB를 내려받고 종료 시 다시 업로드합니다.
+이 봇은 GCP e2-micro(무료 티어) VM에 상시 배포하는 걸 전제로 합니다. VM은 디스크가 영구적이라
+DB/토큰 캐시가 재시작해도 그대로 유지되고, 비밀값도 Secret Manager 없이 VM 안의 `.env` 파일로
+충분합니다 (별도 GCP API 연동 불필요).
 
-### 7-1. 비밀값을 Secret Manager에 등록
-
-```bash
-echo -n "발급받은_APP_KEY"    | gcloud secrets create kis-app-key    --data-file=-
-echo -n "발급받은_APP_SECRET" | gcloud secrets create kis-app-secret --data-file=-
-echo -n "본인_계좌번호"        | gcloud secrets create kis-account-no --data-file=-
-```
-
-### 7-2. DB 영속성용 GCS 버킷 생성
+### 7-1. 브라우저 SSH로 접속 후 기본 패키지 설치
 
 ```bash
-gcloud storage buckets create gs://YOUR_BUCKET_NAME --location=asia-northeast3
+sudo apt update
+sudo apt install -y python3-venv python3-pip git
 ```
 
-### 7-3. 서비스 계정 권한
+### 7-2. 스왑 파일 추가 (필수 권장)
 
-Cloud Run Job이 사용할 서비스 계정에 아래 권한을 부여합니다.
+e2-micro는 메모리가 1GB뿐이라 `pip install pandas` 같은 빌드 중 OOM으로 세션이 끊기는 경우가
+흔합니다. 스왑 파일을 만들어두면 안전합니다.
 
 ```bash
-gcloud secrets add-iam-policy-binding kis-app-key \
-  --member="serviceAccount:YOUR_SA@YOUR_PROJECT.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-# kis-app-secret, kis-account-no도 동일하게 반복
-
-gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET_NAME \
-  --member="serviceAccount:YOUR_SA@YOUR_PROJECT.iam.gserviceaccount.com" \
-  --role="roles/storage.objectAdmin"
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### 7-4. 이미지 빌드 및 Cloud Run Job 배포
+### 7-3. 코드 배치 및 가상환경 설정
 
 ```bash
-gcloud builds submit --tag asia-northeast3-docker.pkg.dev/YOUR_PROJECT/quant-bot/collector
-
-gcloud run jobs create candle-collector \
-  --image asia-northeast3-docker.pkg.dev/YOUR_PROJECT/quant-bot/collector \
-  --region asia-northeast3 \
-  --service-account YOUR_SA@YOUR_PROJECT.iam.gserviceaccount.com \
-  --set-env-vars USE_GCP_SECRET_MANAGER=true,GCP_PROJECT_ID=YOUR_PROJECT,GCS_BUCKET_NAME=YOUR_BUCKET_NAME \
-  --set-env-vars KIS_TRADING_MODE=vps \
-  --max-retries=1
+git clone <이 저장소 URL>
+cd WEB1/quant-bot
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-`SLACK_WEBHOOK_URL`을 함께 `--set-env-vars`로 넘기면 수집 실패 시 Slack 알림을 받을 수 있습니다.
+### 7-4. .env 설정
 
-### 7-5. Cloud Scheduler로 매일 장마감 후 실행 (KST)
+로컬과 동일하게 `.env.example`을 복사해서 채웁니다 (2번 항목 참고). VM에서는 이 파일에
+직접 앱키/시크릿/계좌번호를 넣으면 됩니다.
 
 ```bash
-gcloud scheduler jobs create http candle-collector-trigger \
-  --location asia-northeast3 \
-  --schedule "40 15 * * 1-5" \
-  --time-zone "Asia/Seoul" \
-  --uri "https://asia-northeast3-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/YOUR_PROJECT/jobs/candle-collector:run" \
-  --http-method POST \
-  --oauth-service-account-email YOUR_SA@YOUR_PROJECT.iam.gserviceaccount.com
+cp .env.example .env
+nano .env          # KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO 채우기
+chmod 600 .env      # 소유자만 읽기/쓰기 가능하도록 권한 제한
 ```
 
-### 클라우드 배포 시 반영된 보안/견고성 조치
+`SLACK_WEBHOOK_URL`을 채워두면 수집 실패 시 Slack으로 알림을 받을 수 있습니다 (선택).
 
-- **비밀값**: `.env` 대신 Secret Manager에서 앱키/시크릿/계좌번호를 읽음 (`USE_GCP_SECRET_MANAGER=true`).
-- **DB 영속성**: 실행마다 컨테이너가 초기화돼도 GCS에 DB를 백업/복원해 데이터 유지.
-- **타임존**: 컨테이너 시간대가 UTC여도 로그 타임스탬프는 항상 KST로 기록.
-- **중복 실행 방지**: 이전 실행이 끝나기 전에 재트리거되면 파일 락으로 이번 실행을 건너뜀.
-- **실패 알림**: `SLACK_WEBHOOK_URL` 설정 시 실패 종목이 있으면 Slack으로 알림.
-- **토큰 캐시 파일 권한**: `.kis_token_cache.json`을 `chmod 600`으로 생성.
+### 7-5. cron으로 매일 장마감 후 자동 실행
+
+```bash
+crontab -e
+```
+
+```cron
+# 매일(월~금) 15:40 KST에 실행 (VM 타임존이 UTC라면 09:40 UTC로 맞추거나 TZ=Asia/Seoul을 앞에 붙이세요)
+40 15 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python run_daily.py
+```
+
+`run_daily.py`가 중복 실행 방지 락(`lock.py`)을 쥐고 수집한 뒤, 실패 종목이 있으면 Slack 알림까지
+보내므로 별도 스크립트 없이 이 한 줄이면 됩니다. 실행 로그는 `logs/collector.log`에 쌓입니다.
+
+### 7-6. 방화벽 관련 참고
+
+인스턴스에 HTTP(80)/HTTPS(443) 인바운드가 열려 있는데, 이 분봉 수집기 자체는 KIS API로 나가는
+아웃바운드 호출만 하므로 인바운드 포트가 필요 없습니다. 80/443은 이후 단계에서 FastAPI 대시보드를
+붙일 때 쓰시면 됩니다.
+
+### VM 배포 시 반영된 보안/견고성 조치
+
+- **비밀값**: `.env` 파일에 보관하고 `chmod 600`으로 소유자만 읽기 가능하도록 제한.
+- **토큰 캐시 파일 권한**: `.kis_token_cache.json`도 `chmod 600`으로 자동 생성.
+- **타임존**: VM이 UTC로 설정돼 있어도 로그 타임스탬프는 항상 KST로 기록 (`logging_utils.py`).
+- **중복 실행 방지**: cron이 이전 실행 종료 전에 재트리거해도 파일 락으로 이번 실행을 건너뜀 (`lock.py`).
+- **실패 알림**: `SLACK_WEBHOOK_URL` 설정 시 실패 종목이 있으면 Slack으로 알림 (`alerts.py`).
+- **메모리 제약**: e2-micro(1GB)는 무거운 백테스트/대량 데이터 처리에 부적합하므로, 그런 작업은
+  로컬 PC에서 `db.get_candles_df()`로 DB를 읽어와 처리하고, VM은 실거래 봇 실행/대시보드 서빙 전용으로 씁니다.

@@ -110,11 +110,18 @@ python backtest.py --k 0.7         # K값 변경
 python backtest.py --sweep         # K 0.1~0.9 스캔 후 비교표 출력
 python backtest.py --stock 005930  # 단일 종목
 python backtest.py --start 20240101 --end 20251231   # 기간 지정
+
+# 진단/개선 옵션 (조합 가능)
+python backtest.py --sweep --no-cost      # 비용 제외, 순수 예측력 진단
+python backtest.py --sweep --ma-filter    # 5일MA > 20일MA(상승 추세)인 날만 진입
+python backtest.py --sweep --vol-filter   # 전일 거래량 > 20일 평균인 날만 진입
+python backtest.py --sweep --exit-open    # 당일 종가 대신 다음날 시가 매도 (오버나잇)
 ```
 
 - 전략: 돌파가격 = 시가 + K × (전일 고가-저가), 고가가 돌파가격에 닿으면 돌파가격 매수 → 당일 종가 매도
 - 수수료(0.015%×2), 거래세(0.18%), 슬리피지(0.1%)를 반영한 수익률입니다.
-- 종목별 거래수/승률/평균수익률/누적수익률/MDD와 전체 요약을 출력합니다.
+- 모든 필터는 전일까지의 데이터만 사용해 미래 참조(look-ahead)가 없습니다.
+- 종목별 거래수/승률/거래당 평균수익률/누적수익률/MDD와 전체 요약을 출력합니다.
 
 ## 파일 구조
 

@@ -24,6 +24,6 @@ if __name__ == "__main__":
     try:
         with single_instance_lock():
             summary = collect_and_store()
-            alerts.notify_failure(summary)
+            alerts.notify_collection_result(summary)
     except RuntimeError as exc:
         logger.warning(str(exc))

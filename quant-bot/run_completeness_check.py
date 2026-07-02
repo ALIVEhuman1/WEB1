@@ -21,6 +21,6 @@ if __name__ == "__main__":
     try:
         with single_instance_lock():
             summary = check_and_backfill()
-            alerts.notify_incomplete(summary)
+            alerts.notify_completeness_result(summary)
     except RuntimeError as exc:
         logger.warning(str(exc))

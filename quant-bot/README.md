@@ -72,13 +72,32 @@ python run_completeness_check.py
 - `DISCORD_WEBHOOK_URL` 설정 시 체크 결과(정상/보충 완료/여전히 부족/휴장일 스킵)를 Discord로 보냅니다.
 - 로그는 `logs/completeness.log`에 쌓입니다.
 
-## 7. 저장된 데이터 조회 (백테스트용)
+## 7. 일봉 과거 데이터 일괄 수집 (백테스트 준비)
+
+분봉은 당일 데이터만 API로 받을 수 있어 매일 쌓아야 하지만, 일봉은 과거 몇 년치를
+바로 받을 수 있습니다. 변동성 돌파 전략의 기본형은 일봉만으로 백테스트가 가능하므로,
+이 스크립트로 과거 데이터를 한 번에 확보하고 바로 백테스트를 시작할 수 있습니다.
+
+```bash
+python collect_history.py             # 기본 3년치
+python collect_history.py --years 5   # 5년치
+```
+
+- 수정주가 기준으로 수집해 액면분할/증자로 인한 가격 왜곡을 줄입니다.
+- 매일 돌릴 필요 없이 백테스트 전 한 번, 이후 가끔 갱신용으로 실행하면 됩니다.
+- `daily_candles` 테이블에 저장되며 분봉(`candles`)과 별개입니다.
+
+## 8. 저장된 데이터 조회 (백테스트용)
 
 ```python
-from db import get_candles_df
+from db import get_candles_df, get_daily_candles_df
 
-df = get_candles_df("005930", start_date="20260101", end_date="20260601")
-print(df.head())
+# 분봉 (매일 자동 수집분)
+df_min = get_candles_df("005930", start_date="20260101", end_date="20260601")
+
+# 일봉 (collect_history.py로 수집한 과거 데이터)
+df_daily = get_daily_candles_df("005930", start_date="20230101")
+print(df_daily.head())
 ```
 
 ## 파일 구조
@@ -99,6 +118,8 @@ print(df.head())
 | `alerts.py` | 수집/완결성 체크 현황을 Discord 웹훅으로 알림 (선택) |
 | `completeness.py` | 당일 분봉 개수 완결성 체크 및 부족분 재수집 |
 | `run_completeness_check.py` | 완결성 체크 실행 트리거 (야간 cron 진입점) |
+| `daily_collector.py` | 국내주식기간별시세 API로 일봉 과거 데이터 수집 (수정주가) |
+| `collect_history.py` | 일봉 과거 N년치 일괄 수집 원샷 스크립트 (백테스트 준비용) |
 
 ## 주의사항
 
@@ -106,20 +127,20 @@ print(df.head())
   실전투자용 앱키/시크릿을 사용해야 합니다.
 - 토큰 캐시(`.kis_token_cache.json`)와 DB 파일(`candles.db`)은 git에 커밋되지 않습니다.
 
-## 8. GCP VM에 배포하기
+## 9. GCP VM에 배포하기
 
 이 봇은 GCP e2-micro(무료 티어) VM에 상시 배포하는 걸 전제로 합니다. VM은 디스크가 영구적이라
 DB/토큰 캐시가 재시작해도 그대로 유지되고, 비밀값도 Secret Manager 없이 VM 안의 `.env` 파일로
 충분합니다 (별도 GCP API 연동 불필요).
 
-### 8-1. 브라우저 SSH로 접속 후 기본 패키지 설치
+### 9-1. 브라우저 SSH로 접속 후 기본 패키지 설치
 
 ```bash
 sudo apt update
 sudo apt install -y python3-venv python3-pip git
 ```
 
-### 8-2. 스왑 파일 추가 (필수 권장)
+### 9-2. 스왑 파일 추가 (필수 권장)
 
 e2-micro는 메모리가 1GB뿐이라 `pip install pandas` 같은 빌드 중 OOM으로 세션이 끊기는 경우가
 흔합니다. 스왑 파일을 만들어두면 안전합니다.
@@ -132,7 +153,7 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### 8-3. 코드 배치 및 가상환경 설정
+### 9-3. 코드 배치 및 가상환경 설정
 
 ```bash
 git clone <이 저장소 URL>
@@ -142,7 +163,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 8-4. .env 설정
+### 9-4. .env 설정
 
 로컬과 동일하게 `.env.example`을 복사해서 채웁니다 (2번 항목 참고). VM에서는 이 파일에
 직접 앱키/시크릿/계좌번호를 넣으면 됩니다.
@@ -156,7 +177,7 @@ chmod 600 .env      # 소유자만 읽기/쓰기 가능하도록 권한 제한
 `DISCORD_WEBHOOK_URL`을 채워두면 매 수집/체크 후 현황(성공·실패·저장 행수)을 Discord로 받을 수 있습니다 (선택). Discord
 채널 설정 → 연동 → 웹훅 → 새 웹훅에서 URL을 발급받으면 됩니다.
 
-### 8-5. cron으로 매일 장마감 후 자동 실행
+### 9-5. cron으로 매일 장마감 후 자동 실행
 
 ```bash
 crontab -e
@@ -177,7 +198,7 @@ crontab -e
 0 22 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python run_completeness_check.py
 ```
 
-### 8-6. 방화벽 관련 참고
+### 9-6. 방화벽 관련 참고
 
 인스턴스에 HTTP(80)/HTTPS(443) 인바운드가 열려 있는데, 이 분봉 수집기 자체는 KIS API로 나가는
 아웃바운드 호출만 하므로 인바운드 포트가 필요 없습니다. 80/443은 이후 단계에서 FastAPI 대시보드를

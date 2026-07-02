@@ -100,6 +100,22 @@ df_daily = get_daily_candles_df("005930", start_date="20230101")
 print(df_daily.head())
 ```
 
+## 8-1. 변동성 돌파 백테스트
+
+`collect_history.py`로 일봉을 수집한 뒤 바로 실행할 수 있습니다.
+
+```bash
+python backtest.py                 # 전 종목, K=0.5
+python backtest.py --k 0.7         # K값 변경
+python backtest.py --sweep         # K 0.1~0.9 스캔 후 비교표 출력
+python backtest.py --stock 005930  # 단일 종목
+python backtest.py --start 20240101 --end 20251231   # 기간 지정
+```
+
+- 전략: 돌파가격 = 시가 + K × (전일 고가-저가), 고가가 돌파가격에 닿으면 돌파가격 매수 → 당일 종가 매도
+- 수수료(0.015%×2), 거래세(0.18%), 슬리피지(0.1%)를 반영한 수익률입니다.
+- 종목별 거래수/승률/평균수익률/누적수익률/MDD와 전체 요약을 출력합니다.
+
 ## 파일 구조
 
 | 파일 | 역할 |
@@ -120,6 +136,7 @@ print(df_daily.head())
 | `run_completeness_check.py` | 완결성 체크 실행 트리거 (야간 cron 진입점) |
 | `daily_collector.py` | 국내주식기간별시세 API로 일봉 과거 데이터 수집 (수정주가) |
 | `collect_history.py` | 일봉 과거 N년치 일괄 수집 원샷 스크립트 (백테스트 준비용) |
+| `backtest.py` | 변동성 돌파 전략 백테스트 (K 스캔, 수수료/거래세/슬리피지 반영) |
 
 ## 주의사항
 

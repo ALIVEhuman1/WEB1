@@ -5,17 +5,16 @@ import fcntl
 
 import config
 
-LOCK_PATH = config.BASE_DIR / ".collector.lock"
-
 
 @contextlib.contextmanager
-def single_instance_lock():
-    lock_file = open(LOCK_PATH, "w")
+def single_instance_lock(name: str = "collector"):
+    lock_path = config.BASE_DIR / f".{name}.lock"
+    lock_file = open(lock_path, "w")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         lock_file.close()
-        raise RuntimeError(f"이미 실행 중인 수집 작업이 있어 이번 실행은 건너뜁니다 (lock: {LOCK_PATH})")
+        raise RuntimeError(f"이미 실행 중인 {name} 작업이 있어 이번 실행은 건너뜁니다 (lock: {lock_path})")
 
     try:
         yield

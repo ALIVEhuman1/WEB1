@@ -157,6 +157,36 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 | `collect_history.py` | 일봉 과거 N년치 일괄 수집 원샷 스크립트 (실패 자동 재시도) |
 | `collect_history_fdr.py` | 네이버 금융(FinanceDataReader) 기반 일봉 수집 (KIS 서버 장애 시 대안) |
 | `backtest.py` | 변동성 돌파 전략 백테스트 (K 스캔, 수수료/거래세/슬리피지 반영) |
+| `strategy.py` | 매일 아침 진입 자격/돌파 폭 계산 (백테스트와 동일 규칙) |
+| `kis_order.py` | KIS 주문 API 래퍼 (현재가/시장가 매수·매도, 실전주문 안전장치) |
+| `trader.py` | 장중 돌파 감시 + 자동매매 루프 (청산 → 감시 → 매수) |
+| `run_trader.py` | 자동매매 실행 트리거 (아침 cron 진입점) |
+
+## 8-2. 자동매매 (3단계, 모의투자)
+
+백테스트로 확정한 규칙(K=0.8, 거래량 필터, 시장 필터, 익일시가 청산)을 KIS 모의투자
+계좌로 실행합니다.
+
+**하루 흐름** (평일 08:55 cron 시작):
+1. 일봉 데이터 최신화(FDR) → 진입 후보 계산 (시장 필터 미통과 시 신규 진입 없음)
+2. 09:01 오버나잇 포지션 전량 시장가 매도 (익일 시가 청산)
+3. 15:20까지 후보 종목 현재가 감시 → 돌파가격(시가+K×전일변동폭) 도달 시 시장가 매수
+4. 매수/청산/요약을 Discord로 알림
+
+**설정** (`.env`):
+- `TRADE_K=0.8` 돌파 계수
+- `MAX_POSITIONS=5` 동시 보유 최대 종목 수
+- `TRADE_BUDGET_KRW=1000000` 종목당 투입 금액
+
+**안전장치**: 실전투자(prod) 모드에서는 `ALLOW_PROD_TRADING=true`를 명시하지 않으면
+모든 주문이 차단됩니다. 모의투자에서 충분히 검증한 후에만 전환하세요.
+
+```cron
+# 평일 08:55 KST 자동매매 시작
+55 8 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python run_trader.py
+```
+
+로그는 `logs/trader.log`, 체결 내역은 DB의 `positions` 테이블에 기록됩니다.
 
 ## 주의사항
 

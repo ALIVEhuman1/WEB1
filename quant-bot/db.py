@@ -30,6 +30,19 @@ CREATE TABLE IF NOT EXISTS daily_candles (
 );
 """
 
+POSITIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS positions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_code TEXT NOT NULL,
+    qty        INTEGER NOT NULL,
+    buy_price  REAL NOT NULL,
+    buy_date   TEXT NOT NULL,   -- YYYYMMDD
+    status     TEXT NOT NULL DEFAULT 'open',  -- open / closed
+    sell_price REAL,
+    sell_date  TEXT
+);
+"""
+
 
 def get_connection() -> sqlite3.Connection:
     return sqlite3.connect(config.DB_PATH)
@@ -39,6 +52,7 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.execute(SCHEMA)
         conn.execute(DAILY_SCHEMA)
+        conn.execute(POSITIONS_SCHEMA)
 
 
 def upsert_candles(rows: list[dict]) -> int:
@@ -133,3 +147,29 @@ def get_daily_candles_df(stock_code: str, start_date: str | None = None, end_dat
 
     rows = get_daily_candles(stock_code, start_date, end_date)
     return pd.DataFrame(rows, columns=["stock_code", "date", "open", "high", "low", "close", "volume"])
+
+
+# ---- 자동매매 포지션 관리 ----
+
+def add_position(stock_code: str, qty: int, buy_price: float, buy_date: str) -> int:
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO positions (stock_code, qty, buy_price, buy_date) VALUES (?, ?, ?, ?)",
+            (stock_code, qty, buy_price, buy_date),
+        )
+        return cursor.lastrowid
+
+
+def get_open_positions() -> list[dict]:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("SELECT * FROM positions WHERE status = 'open' ORDER BY id")
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def close_position(position_id: int, sell_price: float, sell_date: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE positions SET status = 'closed', sell_price = ?, sell_date = ? WHERE id = ?",
+            (sell_price, sell_date, position_id),
+        )

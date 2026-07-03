@@ -9,6 +9,8 @@ import os
 
 import requests
 
+import config  # noqa: F401  (.env 로드를 보장하기 위한 임포트)
+
 logger = logging.getLogger(__name__)
 
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
@@ -16,6 +18,7 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 def _post(text: str) -> None:
     if not DISCORD_WEBHOOK_URL:
+        logger.debug("DISCORD_WEBHOOK_URL 미설정으로 알림 생략")
         return
     try:
         requests.post(DISCORD_WEBHOOK_URL, json={"content": text}, timeout=5)

@@ -22,6 +22,7 @@ from retry import retry_with_backoff
 logger = logging.getLogger(__name__)
 
 PER_STOCK_DELAY = 0.5  # 네이버 쪽 과도한 요청 방지용 딜레이 (초)
+INDEX_CODE = "KS11"    # 코스피 지수 (시장 상태 필터용, 종목과 함께 daily_candles에 저장)
 
 
 @retry_with_backoff(max_retries=3, base_delay=2.0)
@@ -31,11 +32,16 @@ def fetch_daily_history_fdr(stock_code: str, years: int) -> list[dict]:
     start = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
     df = fdr.DataReader(stock_code, start)
 
+    import pandas as pd
+
     rows = []
     for idx, r in df.iterrows():
+        if pd.isna(r["Open"]) or pd.isna(r["Close"]):
+            continue
         open_, high, low, close = int(r["Open"]), int(r["High"]), int(r["Low"]), int(r["Close"])
         if open_ <= 0 or high <= 0:
             continue  # 거래정지일 등 가격이 비어있는 날은 제외
+        volume = int(r["Volume"]) if "Volume" in df.columns and pd.notna(r["Volume"]) else 0
         rows.append({
             "stock_code": stock_code,
             "date": idx.strftime("%Y%m%d"),
@@ -43,7 +49,7 @@ def fetch_daily_history_fdr(stock_code: str, years: int) -> list[dict]:
             "high": high,
             "low": low,
             "close": close,
-            "volume": int(r["Volume"]),
+            "volume": volume,
         })
     return rows
 
@@ -52,10 +58,13 @@ def collect_history_fdr(years: int = 5, watchlist: list[str] | None = None) -> d
     watchlist = watchlist if watchlist is not None else load_watchlist()
     db.init_db()
 
-    logger.info("[FDR] 일봉 %d년치 수집 시작: 종목 %d개", years, len(watchlist))
-    summary = {"total_stocks": len(watchlist), "success": 0, "failed": [], "rows_saved": 0}
+    # 코스피 지수도 함께 수집 (backtest.py --market-filter에서 사용)
+    targets = watchlist + [INDEX_CODE]
 
-    for stock_code in watchlist:
+    logger.info("[FDR] 일봉 %d년치 수집 시작: 종목 %d개 + 지수(%s)", years, len(watchlist), INDEX_CODE)
+    summary = {"total_stocks": len(targets), "success": 0, "failed": [], "rows_saved": 0}
+
+    for stock_code in targets:
         try:
             rows = fetch_daily_history_fdr(stock_code, years)
             saved = db.upsert_daily_candles(rows)

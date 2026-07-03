@@ -120,11 +120,15 @@ python backtest.py --stock 005930  # 단일 종목
 python backtest.py --start 20240101 --end 20251231   # 기간 지정
 
 # 진단/개선 옵션 (조합 가능)
-python backtest.py --sweep --no-cost      # 비용 제외, 순수 예측력 진단
-python backtest.py --sweep --ma-filter    # 5일MA > 20일MA(상승 추세)인 날만 진입
-python backtest.py --sweep --vol-filter   # 전일 거래량 > 20일 평균인 날만 진입
-python backtest.py --sweep --exit-open    # 당일 종가 대신 다음날 시가 매도 (오버나잇)
+python backtest.py --sweep --no-cost        # 비용 제외, 순수 예측력 진단
+python backtest.py --sweep --ma-filter      # 5일MA > 20일MA(상승 추세)인 날만 진입
+python backtest.py --sweep --vol-filter     # 전일 거래량 > 20일 평균인 날만 진입
+python backtest.py --sweep --exit-open      # 당일 종가 대신 다음날 시가 매도 (오버나잇)
+python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 이평 위일 때만 진입
 ```
+
+`--market-filter`는 코스피 지수(KS11) 일봉이 필요하며, `collect_history_fdr.py`가 종목과 함께
+자동으로 수집합니다.
 
 - 전략: 돌파가격 = 시가 + K × (전일 고가-저가), 고가가 돌파가격에 닿으면 돌파가격 매수 → 당일 종가 매도
 - 수수료(0.015%×2), 거래세(0.18%), 슬리피지(0.1%)를 반영한 수익률입니다.

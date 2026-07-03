@@ -86,6 +86,14 @@ python collect_history.py --years 5   # 5년치
 - 수정주가 기준으로 수집해 액면분할/증자로 인한 가격 왜곡을 줄입니다.
 - 매일 돌릴 필요 없이 백테스트 전 한 번, 이후 가끔 갱신용으로 실행하면 됩니다.
 - `daily_candles` 테이블에 저장되며 분봉(`candles`)과 별개입니다.
+- 실패 종목은 자동 재시도합니다 (`--retry-rounds 10 --retry-wait 1800` = 30분 간격 10회).
+
+**KIS 모의투자 서버가 과거 일봉 조회에 계속 500을 뱉는 경우** 네이버 금융 기반의
+대안 수집기를 사용하세요 (같은 테이블에 저장되므로 백테스트는 동일하게 동작):
+
+```bash
+python collect_history_fdr.py --years 5
+```
 
 ## 8. 저장된 데이터 조회 (백테스트용)
 
@@ -142,7 +150,8 @@ python backtest.py --sweep --exit-open    # 당일 종가 대신 다음날 시�
 | `completeness.py` | 당일 분봉 개수 완결성 체크 및 부족분 재수집 |
 | `run_completeness_check.py` | 완결성 체크 실행 트리거 (야간 cron 진입점) |
 | `daily_collector.py` | 국내주식기간별시세 API로 일봉 과거 데이터 수집 (수정주가) |
-| `collect_history.py` | 일봉 과거 N년치 일괄 수집 원샷 스크립트 (백테스트 준비용) |
+| `collect_history.py` | 일봉 과거 N년치 일괄 수집 원샷 스크립트 (실패 자동 재시도) |
+| `collect_history_fdr.py` | 네이버 금융(FinanceDataReader) 기반 일봉 수집 (KIS 서버 장애 시 대안) |
 | `backtest.py` | 변동성 돌파 전략 백테스트 (K 스캔, 수수료/거래세/슬리피지 반영) |
 
 ## 주의사항

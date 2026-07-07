@@ -127,10 +127,8 @@ MOMENTUM_TOP_N = 20
 MOMENTUM_LOOKBACK = 126  # 약 6개월
 
 
-def momentum_series(closes: dict, turnovers: dict) -> tuple[pd.Series, pd.DataFrame]:
+def momentum_series(panel: pd.DataFrame, to_panel: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
     """매월 말 6개월 수익률 상위 20종목 매수, 다음 달 보유. (일별 수익률, 거래 목록)."""
-    panel = pd.DataFrame(closes).sort_index()
-    to_panel = pd.DataFrame(turnovers).reindex(panel.index)
     rets = panel.pct_change()
 
     dates = panel.index.to_list()
@@ -234,14 +232,24 @@ PER_STOCK_STRATEGIES = {"meanrev": meanrev_trades, "trend": trend_trades, "high5
 
 
 def compute_all(names: list[str]) -> dict[str, tuple[pd.Series | None, pd.DataFrame]]:
-    """전 종목 데이터를 한 번만 로드해 요청된 모든 전략을 계산한다."""
+    """전 종목 데이터를 한 번만 로드해 요청된 모든 전략을 계산한다.
+
+    메모리 절약(e2-micro 1GB 대응): momentum 패널은 종목별 pandas 객체를 쌓지 않고,
+    코스피 지수의 거래일 캘린더에 정렬된 float32 배열로 만든다 (~25MB 수준).
+    """
     results: dict = {}
     per_stock = [n for n in names if n in PER_STOCK_STRATEGIES]
     need_panel = "momentum" in names
 
     if per_stock or need_panel:
         acc = {n: [] for n in per_stock}
-        closes, turnovers = {}, {}
+        if need_panel:
+            cal = [r["date"] for r in db.get_daily_candles(INDEX_CODE)]
+            if not cal:
+                raise RuntimeError("momentum 전략은 코스피 지수(KS11) 데이터가 필요합니다. collect_history_fdr.py를 먼저 실행하세요.")
+            date_pos = {d: i for i, d in enumerate(cal)}
+            close_cols, to_cols, panel_codes = [], [], []
+
         codes = _all_stock_codes()
         for k, code in enumerate(codes, 1):
             df = db.get_daily_candles_df(code)
@@ -252,14 +260,25 @@ def compute_all(names: list[str]) -> dict[str, tuple[pd.Series | None, pd.DataFr
             for n in per_stock:
                 acc[n].extend(PER_STOCK_STRATEGIES[n](a))
             if need_panel and len(df) >= 300:
-                closes[code] = pd.Series(a["c"], index=a["dates"])
-                turnovers[code] = pd.Series(a["turnover_ma"], index=a["dates"])
+                pos = np.fromiter((date_pos.get(d, -1) for d in a["dates"]), dtype=np.int64)
+                mask = pos >= 0
+                cvec = np.full(len(cal), np.nan, dtype=np.float32)
+                tvec = np.full(len(cal), np.nan, dtype=np.float32)
+                cvec[pos[mask]] = a["c"][mask]
+                tvec[pos[mask]] = a["turnover_ma"][mask]
+                close_cols.append(cvec)
+                to_cols.append(tvec)
+                panel_codes.append(code)
             if k % 500 == 0:
                 print(f"  ... 종목 로드/계산 {k}/{len(codes)}")
+
         for n in per_stock:
             results[n] = (None, pd.DataFrame(acc[n]))
         if need_panel:
-            results["momentum"] = momentum_series(closes, turnovers)
+            panel = pd.DataFrame(np.column_stack(close_cols), index=cal, columns=panel_codes)
+            to_panel = pd.DataFrame(np.column_stack(to_cols), index=cal, columns=panel_codes)
+            del close_cols, to_cols
+            results["momentum"] = momentum_series(panel, to_panel)
 
     if "breakout" in names:
         results["breakout"] = (None, _breakout_daily_trades())

@@ -29,7 +29,12 @@ def get_base_url() -> str:
 TOKEN_CACHE_PATH = BASE_DIR / ".kis_token_cache.json"
 DB_PATH = BASE_DIR / "candles.db"
 WATCHLIST_PATH = BASE_DIR / "watchlist.json"
+WATCHLIST_AUTO_PATH = BASE_DIR / "watchlist_auto.json"
 LOG_DIR = BASE_DIR / "logs"
+
+# true면 collect_market.py가 생성한 watchlist_auto.json(전일 거래대금 상위 종목)을 우선 사용.
+# 파일이 없으면 자동으로 고정 watchlist.json으로 폴백한다.
+USE_AUTO_WATCHLIST = os.getenv("USE_AUTO_WATCHLIST", "true").strip().lower() == "true"
 
 
 def _split_account() -> tuple[str, str]:

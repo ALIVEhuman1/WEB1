@@ -161,6 +161,9 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 | `kis_order.py` | KIS 주문 API 래퍼 (현재가/시장가 매수·매도, 실전주문 안전장치) |
 | `trader.py` | 장중 돌파 감시 + 자동매매 루프 (청산 → 감시 → 매수) |
 | `run_trader.py` | 자동매매 실행 트리거 (아침 cron 진입점) |
+| `universe.py` | 코스피+코스닥 전 종목 리스트 (우선주/스팩 제외) |
+| `collect_market.py` | 전 종목 일봉 수집 + 거래대금 상위 종목 자동 선발 (저녁 cron) |
+| `backtest_dynamic.py` | 동적 유니버스(거래대금 상위 N) 방식 백테스트 |
 
 ## 8-2. 자동매매 (3단계, 모의투자)
 
@@ -180,6 +183,28 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 
 **안전장치**: 실전투자(prod) 모드에서는 `ALLOW_PROD_TRADING=true`를 명시하지 않으면
 모든 주문이 차단됩니다. 모의투자에서 충분히 검증한 후에만 전환하세요.
+
+### 동적 watchlist (전 종목 스캔)
+
+고정 50종목 대신, 매일 저녁 코스피+코스닥 전 종목을 훑어서 **전일 거래대금 상위 50종목**을
+다음날 감시 대상으로 자동 선발할 수 있습니다.
+
+```bash
+# 최초 1회: 전 종목 5년치 일봉 백필 (약 1시간, nohup 권장)
+nohup python collect_market.py --init --years 5 > market_init.log 2>&1 &
+
+# 검증: 동적 유니버스 방식 백테스트 (고정 watchlist 결과와 비교)
+python backtest_dynamic.py --sweep
+python backtest_dynamic.py --sweep --start 20250101   # 구간별 확인
+
+# 매일 저녁 자동 갱신 (cron, 17:30 KST = 08:30 UTC)
+# 30 8 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python collect_market.py
+```
+
+- 선발 결과는 `watchlist_auto.json`에 저장되고, 트레이더/수집기는 이 파일이 있으면 자동으로
+  우선 사용합니다 (없으면 고정 `watchlist.json`으로 폴백).
+- 고정 목록으로 되돌리려면 `.env`에 `USE_AUTO_WATCHLIST=false`를 넣거나 `watchlist_auto.json`을 삭제하세요.
+- `backtest_dynamic.py`는 일봉 한계로 동시보유 종목수 제한을 근사(당일 돌파 종목 균등 배분)합니다.
 
 ```cron
 # 평일 08:55 KST 자동매매 시작

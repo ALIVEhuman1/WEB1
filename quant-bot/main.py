@@ -17,6 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 def load_watchlist() -> list[str]:
+    """감시 종목 목록. 자동 선발본(watchlist_auto.json)이 있으면 우선 사용하고,
+    없으면 고정 목록(watchlist.json)으로 폴백한다."""
+    if config.USE_AUTO_WATCHLIST and config.WATCHLIST_AUTO_PATH.exists():
+        with open(config.WATCHLIST_AUTO_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        codes = data["codes"] if isinstance(data, dict) else data
+        if codes:
+            logger.info("자동 선발 watchlist 사용: %d종목 (생성: %s)",
+                        len(codes), data.get("generated_at", "?") if isinstance(data, dict) else "?")
+            return codes
+
     with open(config.WATCHLIST_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 

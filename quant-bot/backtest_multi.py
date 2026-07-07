@@ -2,10 +2,8 @@
 
 전략 (동일 비용 모델: 수수료 0.015%x2 + 거래세 0.18% + 슬리피지 0.1%):
 - breakout   변동성 돌파: 기존 확정 규칙 (K=0.8, 거래량/시장 필터, 익일시가 청산), 고정 watchlist
-- momentum   횡단면 모멘텀: 매월 말 최근 6개월 수익률 상위 20종목 매수, 한 달 보유 후 리밸런스
-- high52     52주 신고가 돌파: 종가가 직전 52주 최고가 돌파 -> 익일 시가 매수, 20일선 이탈 -> 익일 시가 매도
 - index      지수 타이밍(절대 모멘텀): 코스피 종가 > 200일선이면 지수 보유, 아니면 현금
-- gapdown    갭 하락 반등: 200일선 위 종목이 전일 종가 대비 -3% 이상 갭 하락 출발 -> 시가 매수, 당일 종가 매도
+- gapdown    갭 하락 반등 (2026-07 검증 탈락: 거래당 -0.44%, 하락장에서만 +0.26% -> 참고용)
 - meanrev    평균회귀 (2026-07 검증 탈락 -> 참고용)
 - trend      5/20 골든크로스 (2026-07 검증 탈락 -> 참고용)
 - momentum   횡단면 모멘텀 (2026-07 검증 탈락: 한국시장 모멘텀 부진 문헌과 일치 -> 참고용)
@@ -380,7 +378,7 @@ def report_window(label: str, computed: dict, start: str | None, end: str | None
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="멀티 전략 백테스트")
-    parser.add_argument("--strategies", type=str, default="breakout,index,gapdown")
+    parser.add_argument("--strategies", type=str, default="breakout,index")
     parser.add_argument("--split", action="store_true", help="전체/하락/횡보/상승 4개 구간을 한 번에 출력")
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)

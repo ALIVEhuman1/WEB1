@@ -33,8 +33,9 @@ WATCHLIST_AUTO_PATH = BASE_DIR / "watchlist_auto.json"
 LOG_DIR = BASE_DIR / "logs"
 
 # true면 collect_market.py가 생성한 watchlist_auto.json(전일 거래대금 상위 종목)을 우선 사용.
-# 파일이 없으면 자동으로 고정 watchlist.json으로 폴백한다.
-USE_AUTO_WATCHLIST = os.getenv("USE_AUTO_WATCHLIST", "true").strip().lower() == "true"
+# 백테스트 결과 '거래대금 상위 추격' 선발은 이 전략과 궁합이 나빠(전 구간 거래당 -0.5%)
+# 기본값을 false로 둔다. 다른 선발 규칙을 검증한 뒤에만 명시적으로 켤 것.
+USE_AUTO_WATCHLIST = os.getenv("USE_AUTO_WATCHLIST", "false").strip().lower() == "true"
 
 
 def _split_account() -> tuple[str, str]:

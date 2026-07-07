@@ -5,8 +5,11 @@
 - momentum   횡단면 모멘텀: 매월 말 최근 6개월 수익률 상위 20종목 매수, 한 달 보유 후 리밸런스
 - high52     52주 신고가 돌파: 종가가 직전 52주 최고가 돌파 -> 익일 시가 매수, 20일선 이탈 -> 익일 시가 매도
 - index      지수 타이밍(절대 모멘텀): 코스피 종가 > 200일선이면 지수 보유, 아니면 현금
+- gapdown    갭 하락 반등: 200일선 위 종목이 전일 종가 대비 -3% 이상 갭 하락 출발 -> 시가 매수, 당일 종가 매도
 - meanrev    평균회귀 (2026-07 검증 탈락 -> 참고용)
 - trend      5/20 골든크로스 (2026-07 검증 탈락 -> 참고용)
+- momentum   횡단면 모멘텀 (2026-07 검증 탈락: 한국시장 모멘텀 부진 문헌과 일치 -> 참고용)
+- high52     52주 신고가 (2026-07 검증 탈락 -> 참고용)
 
 성능: 전 종목 데이터는 한 번만 로드해 모든 전략이 공유하고, 계산도 한 번만 한 뒤
 기간별로 잘라서 요약한다. --split 하나로 전체/하락장/횡보장/상승장 4개 표가 나온다.
@@ -123,6 +126,26 @@ def high52_trades(a: dict) -> list[dict]:
     return _hold_until(a, entry, exit_, 253)
 
 
+GAPDOWN_THRESHOLD = 0.97  # 전일 종가 대비 -3% 이상 갭 하락
+
+
+def gapdown_trades(a: dict) -> list[dict]:
+    """200일선 위 종목이 -3% 이상 갭 하락 출발 -> 시가 매수, 당일 종가 매도.
+
+    판단에 쓰는 정보(전일 종가/전일 MA200/전일 거래대금)는 모두 개장 시점에
+    알 수 있는 것들이라 미래 참조가 없다.
+    """
+    o, c = a["o"], a["c"]
+    with np.errstate(invalid="ignore"):
+        sig = (o[1:] <= c[:-1] * GAPDOWN_THRESHOLD) \
+            & (c[:-1] > a["ma200"][:-1]) \
+            & (a["turnover_ma"][:-1] > MIN_TURNOVER)
+    entry = o[1:][sig] * (1 + SLIPPAGE_RATE)
+    rets = (c[1:][sig] / entry) * (1 - ROUND_TRIP_COST) - 1
+    dates = a["dates"][1:][sig]
+    return [{"date": d, "ret": float(r), "hold": 1} for d, r in zip(dates, rets)]
+
+
 MOMENTUM_TOP_N = 20
 MOMENTUM_LOOKBACK = 126  # 약 6개월
 
@@ -228,7 +251,8 @@ def _breakout_daily_trades() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-PER_STOCK_STRATEGIES = {"meanrev": meanrev_trades, "trend": trend_trades, "high52": high52_trades}
+PER_STOCK_STRATEGIES = {"meanrev": meanrev_trades, "trend": trend_trades,
+                        "high52": high52_trades, "gapdown": gapdown_trades}
 
 
 def compute_all(names: list[str]) -> dict[str, tuple[pd.Series | None, pd.DataFrame]]:
@@ -356,7 +380,7 @@ def report_window(label: str, computed: dict, start: str | None, end: str | None
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="멀티 전략 백테스트")
-    parser.add_argument("--strategies", type=str, default="breakout,momentum,high52,index")
+    parser.add_argument("--strategies", type=str, default="breakout,index,gapdown")
     parser.add_argument("--split", action="store_true", help="전체/하락/횡보/상승 4개 구간을 한 번에 출력")
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)

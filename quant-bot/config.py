@@ -50,3 +50,6 @@ def _split_account() -> tuple[str, str]:
 TRADE_K = float(os.getenv("TRADE_K", "0.8"))                       # 돌파 계수
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))               # 동시 보유 종목 수
 TRADE_BUDGET_KRW = int(os.getenv("TRADE_BUDGET_KRW", "1000000"))   # 종목당 투입 금액(원)
+
+# 지수 타이밍 전략(KODEX 200)에 배분할 금액. 0이면 비활성.
+ETF_BUDGET_KRW = int(os.getenv("ETF_BUDGET_KRW", "0"))

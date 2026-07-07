@@ -57,7 +57,7 @@ def refresh_daily_data() -> None:
 def sell_open_positions(access_token: str) -> list[str]:
     """오버나잇 포지션 전량 시장가 매도 (익일 시가 청산)."""
     sold = []
-    for pos in db.get_open_positions():
+    for pos in db.get_open_positions("breakout"):  # ETF(지수 타이밍) 포지션은 제외
         try:
             kis_order.sell_market(access_token, pos["stock_code"], pos["qty"])
             quote = kis_order.get_current_price(access_token, pos["stock_code"])
@@ -80,7 +80,7 @@ def monitor_and_buy(access_token: str, setups: dict[str, dict]) -> list[str]:
     cutoff = _now().replace(hour=ENTRY_CUTOFF[0], minute=ENTRY_CUTOFF[1], second=0, microsecond=0)
     targets: dict[str, float] = {}   # 시가 확보 후 완성된 돌파가격
     bought: list[str] = []
-    open_count = len(db.get_open_positions())
+    open_count = len(db.get_open_positions("breakout"))  # ETF 포지션은 슬롯을 차지하지 않음
 
     candidates = list(setups.keys())
     logger.info("감시 시작: 후보 %d종목, K=%.2f, 컷오프 %02d:%02d",
@@ -140,13 +140,25 @@ def run_trading_day() -> dict:
 
     sold = sell_open_positions(access_token)
 
+    # 지수 타이밍 전략 (ETF_BUDGET_KRW > 0일 때만 동작, 돌파 전략과 자본 분리)
+    try:
+        import etf_timing
+
+        etf_action = etf_timing.manage_position(access_token, _today())
+    except Exception:
+        logger.exception("ETF 타이밍 처리 실패 (돌파 전략은 계속 진행)")
+        etf_action = "error"
+
     bought = monitor_and_buy(access_token, setups) if setups else []
 
-    summary = {"date": _today(), "sold": sold, "bought": bought, "candidates": len(setups)}
-    logger.info("=== 자동매매 종료: 청산 %s, 신규매수 %s ===", sold or "없음", bought or "없음")
+    summary = {"date": _today(), "sold": sold, "bought": bought,
+               "candidates": len(setups), "etf": etf_action}
+    logger.info("=== 자동매매 종료: 청산 %s, 신규매수 %s, ETF %s ===",
+                sold or "없음", bought or "없음", etf_action)
     discord_post(
         f":clipboard: **[자동매매 {_today()}]** 후보 {len(setups)}종목 / "
         f"청산 {len(sold)}건({', '.join(sold) if sold else '-'}) / "
-        f"매수 {len(bought)}건({', '.join(bought) if bought else '-'})"
+        f"매수 {len(bought)}건({', '.join(bought) if bought else '-'}) / "
+        f"ETF {etf_action}"
     )
     return summary

@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS positions (
     buy_date   TEXT NOT NULL,   -- YYYYMMDD
     status     TEXT NOT NULL DEFAULT 'open',  -- open / closed
     sell_price REAL,
-    sell_date  TEXT
+    sell_date  TEXT,
+    strategy   TEXT NOT NULL DEFAULT 'breakout'  -- breakout / index
 );
 """
 
@@ -53,6 +54,10 @@ def init_db() -> None:
         conn.execute(SCHEMA)
         conn.execute(DAILY_SCHEMA)
         conn.execute(POSITIONS_SCHEMA)
+        # 기존 DB 마이그레이션: strategy 컬럼이 없으면 추가
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(positions)").fetchall()]
+        if "strategy" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN strategy TEXT NOT NULL DEFAULT 'breakout'")
 
 
 def upsert_candles(rows: list[dict]) -> int:
@@ -151,19 +156,25 @@ def get_daily_candles_df(stock_code: str, start_date: str | None = None, end_dat
 
 # ---- 자동매매 포지션 관리 ----
 
-def add_position(stock_code: str, qty: int, buy_price: float, buy_date: str) -> int:
+def add_position(stock_code: str, qty: int, buy_price: float, buy_date: str,
+                 strategy: str = "breakout") -> int:
     with get_connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO positions (stock_code, qty, buy_price, buy_date) VALUES (?, ?, ?, ?)",
-            (stock_code, qty, buy_price, buy_date),
+            "INSERT INTO positions (stock_code, qty, buy_price, buy_date, strategy) VALUES (?, ?, ?, ?, ?)",
+            (stock_code, qty, buy_price, buy_date, strategy),
         )
         return cursor.lastrowid
 
 
-def get_open_positions() -> list[dict]:
+def get_open_positions(strategy: str | None = None) -> list[dict]:
+    query = "SELECT * FROM positions WHERE status = 'open'"
+    params: list = []
+    if strategy:
+        query += " AND strategy = ?"
+        params.append(strategy)
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
-        cursor = conn.execute("SELECT * FROM positions WHERE status = 'open' ORDER BY id")
+        cursor = conn.execute(query + " ORDER BY id", params)
         return [dict(row) for row in cursor.fetchall()]
 
 

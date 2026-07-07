@@ -167,6 +167,7 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 | `backtest_multi.py` | 멀티 전략(돌파/평균회귀/추세) 백테스트 + 결합 포트폴리오 |
 | `ai_report.py` | Claude가 당일 매매의 '실행 품질'을 채점해 Discord 전송 (전략 불변) |
 | `ai_monthly.py` | Claude 월간 분석: 백테스트 기대치 대비 성과 + 개선 가설 제안 (자동 반영 없음) |
+| `etf_timing.py` | 지수 타이밍 전략: 코스피>200일선이면 KODEX200 보유, 이탈 시 현금 (`ETF_BUDGET_KRW`로 활성화) |
 
 ## 8-2. 자동매매 (3단계, 모의투자)
 

@@ -164,6 +164,9 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 | `universe.py` | 코스피+코스닥 전 종목 리스트 (우선주/스팩 제외) |
 | `collect_market.py` | 전 종목 일봉 수집 + 거래대금 상위 종목 자동 선발 (저녁 cron) |
 | `backtest_dynamic.py` | 동적 유니버스(거래대금 상위 N) 방식 백테스트 |
+| `backtest_multi.py` | 멀티 전략(돌파/평균회귀/추세) 백테스트 + 결합 포트폴리오 |
+| `ai_report.py` | Claude가 당일 매매의 '실행 품질'을 채점해 Discord 전송 (전략 불변) |
+| `ai_monthly.py` | Claude 월간 분석: 백테스트 기대치 대비 성과 + 개선 가설 제안 (자동 반영 없음) |
 
 ## 8-2. 자동매매 (3단계, 모의투자)
 
@@ -214,6 +217,25 @@ python backtest_dynamic.py --sweep --start 20250101   # 구간별 확인
 ```
 
 로그는 `logs/trader.log`, 체결 내역은 DB의 `positions` 테이블에 기록됩니다.
+
+### AI 채점/분석 (선택, ANTHROPIC_API_KEY 필요)
+
+Claude API로 두 가지 자동 리뷰를 돌릴 수 있습니다. **둘 다 매매 전략을 자동으로
+바꾸지 않습니다** — 일일 리포트는 실행 품질(슬리피지/청산 타이밍/에러)만 채점하고,
+월간 분석의 개선 제안은 반드시 백테스트 검증과 운용자 승인을 거쳐 수동 반영합니다.
+
+```bash
+python ai_report.py    # 당일 실행 품질 채점 -> Discord
+python ai_monthly.py   # 이번 달 분석 + 백테스트할 가설 제안 -> Discord
+python ai_monthly.py --month 202607   # 특정 월 분석
+```
+
+```cron
+# 평일 16:10 KST 일일 채점 = 07:10 UTC
+10 7 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python ai_report.py
+# 매월 1일 09:00 KST 월간 분석 = 00:00 UTC
+0 0 1 * * cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python ai_monthly.py
+```
 
 ## 주의사항
 

@@ -53,3 +53,9 @@ TRADE_BUDGET_KRW = int(os.getenv("TRADE_BUDGET_KRW", "1000000"))   # 종목당 �
 
 # 지수 타이밍 전략(KODEX 200)에 배분할 금액. 0이면 비활성.
 ETF_BUDGET_KRW = int(os.getenv("ETF_BUDGET_KRW", "0"))
+
+# ---- 안전장치 (kill-switch, 백테스트 불필요한 리스크 관리) ----
+# 코스피(KODEX200 대용) 당일 등락률이 이 값(%) 이하로 급락하면 그날 신규 진입 중단.
+CRASH_HALT_PCT = float(os.getenv("CRASH_HALT_PCT", "-4.0"))
+# 실현 누적손익이 이 금액(원) 이상 손실이면 신규 진입 중단 + 알림. 0이면 비활성.
+LOSS_LIMIT_KRW = int(os.getenv("LOSS_LIMIT_KRW", "0"))

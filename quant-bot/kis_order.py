@@ -63,7 +63,8 @@ def _get_hashkey(body: dict) -> str:
 
 @retry_with_backoff(max_retries=3, base_delay=1.0, exceptions=(requests.RequestException,))
 def get_current_price(access_token: str, stock_code: str) -> dict:
-    """현재가/당일시가 조회. 반환: {"price": 현재가, "open": 당일시가}"""
+    """현재가/당일시가/전일대비율 조회.
+    반환: {"price": 현재가, "open": 당일시가, "change_pct": 전일대비 등락률(%)}"""
     url = config.get_base_url() + PRICE_PATH
     params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock_code}
     resp = requests.get(url, headers=_headers(access_token, TR_PRICE), params=params, timeout=10)
@@ -72,7 +73,11 @@ def get_current_price(access_token: str, stock_code: str) -> dict:
     if payload.get("rt_cd") != "0":
         raise RuntimeError(f"현재가 조회 오류 ({stock_code}): {payload.get('msg1')}")
     out = payload["output"]
-    return {"price": int(out["stck_prpr"]), "open": int(out["stck_oprc"])}
+    try:
+        change_pct = float(out.get("prdy_ctrt", "0"))
+    except (TypeError, ValueError):
+        change_pct = 0.0
+    return {"price": int(out["stck_prpr"]), "open": int(out["stck_oprc"]), "change_pct": change_pct}
 
 
 @retry_with_backoff(max_retries=2, base_delay=1.0, exceptions=(requests.RequestException,))

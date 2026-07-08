@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 import config
 import db
 import kis_order
+import safety
 import strategy
 from alerts import _post as discord_post
 from kis_auth import get_access_token
@@ -87,6 +88,14 @@ def monitor_and_buy(access_token: str, setups: dict[str, dict]) -> list[str]:
                 len(candidates), config.TRADE_K, *ENTRY_CUTOFF)
 
     while _now() < cutoff and candidates and open_count < config.MAX_POSITIONS:
+        # 급락 서킷: 당일 코스피가 임계치 이하로 급락하면 그날 신규 진입 중단
+        crashed, pct = safety.crash_halt(access_token)
+        if crashed:
+            logger.warning("급락 서킷 발동: 코스피 당일 %.2f%% (임계 %.1f%%). 신규 진입 중단.",
+                           pct, config.CRASH_HALT_PCT)
+            discord_post(f":warning: **[안전장치]** 코스피 당일 {pct:+.2f}% 급락 "
+                         f"-> 오늘 신규 진입 중단 (기존 포지션은 유지)")
+            break
         for code in list(candidates):
             if _now() >= cutoff or open_count >= config.MAX_POSITIONS:
                 break
@@ -149,10 +158,20 @@ def run_trading_day() -> dict:
         logger.exception("ETF 타이밍 처리 실패 (돌파 전략은 계속 진행)")
         etf_action = "error"
 
-    bought = monitor_and_buy(access_token, setups) if setups else []
+    # 손실 차단기: 실현 누적손실이 한도를 넘으면 신규 진입을 막고 사람에게 알림
+    loss_halted, pnl = safety.loss_limit_halt()
+    if loss_halted:
+        logger.warning("손실 차단기 발동: 실현 누적손익 %d원 (한도 -%d원). 신규 매수 중단.",
+                       pnl, config.LOSS_LIMIT_KRW)
+        discord_post(f":octagonal_sign: **[안전장치]** 실현 누적손익 {pnl:,}원이 손실 한도"
+                     f"(-{config.LOSS_LIMIT_KRW:,}원)를 초과해 자동매매를 중단합니다. 점검이 필요합니다.")
+        bought = []
+    else:
+        bought = monitor_and_buy(access_token, setups) if setups else []
 
     summary = {"date": _today(), "sold": sold, "bought": bought,
-               "candidates": len(setups), "etf": etf_action}
+               "candidates": len(setups), "etf": etf_action,
+               "halted": loss_halted}
     logger.info("=== 자동매매 종료: 청산 %s, 신규매수 %s, ETF %s ===",
                 sold or "없음", bought or "없음", etf_action)
     discord_post(

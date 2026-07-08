@@ -64,8 +64,11 @@ def sell_open_positions(access_token: str) -> list[str]:
             quote = kis_order.get_current_price(access_token, pos["stock_code"])
             db.close_position(pos["id"], quote["price"], _today())
             sold.append(pos["stock_code"])
+            ret = (quote["price"] / pos["buy_price"] - 1) * 100
             logger.info("청산: %s x%d (매수가 %.0f -> 현재가 %d)",
                         pos["stock_code"], pos["qty"], pos["buy_price"], quote["price"])
+            discord_post(f":outbox_tray: **[청산]** {pos['stock_code']} x{pos['qty']} "
+                         f"@ {quote['price']:,}원 (매수 {pos['buy_price']:,.0f} -> {ret:+.2f}%)")
         except Exception:
             logger.exception("%s 청산 실패 (다음 실행에서 재시도됨)", pos["stock_code"])
         time.sleep(POLL_DELAY)
@@ -86,6 +89,8 @@ def monitor_and_buy(access_token: str, setups: dict[str, dict]) -> list[str]:
     candidates = list(setups.keys())
     logger.info("감시 시작: 후보 %d종목, K=%.2f, 컷오프 %02d:%02d",
                 len(candidates), config.TRADE_K, *ENTRY_CUTOFF)
+    discord_post(f":eyes: **[감시 시작]** 후보 {len(candidates)}종목 돌파 감시 개시 "
+                 f"(K={config.TRADE_K}, {ENTRY_CUTOFF[0]:02d}:{ENTRY_CUTOFF[1]:02d}까지)")
 
     while _now() < cutoff and candidates and open_count < config.MAX_POSITIONS:
         # 급락 서킷: 당일 코스피가 임계치 이하로 급락하면 그날 신규 진입 중단
@@ -138,16 +143,26 @@ def run_trading_day() -> dict:
     """하루치 매매 사이클 실행. 장 시작 전(08:5x)에 시작하는 것을 전제로 한다."""
     logger.info("=== 자동매매 시작 (%s, 모드: %s) ===", _today(), config.TRADING_MODE)
     db.init_db()
+    discord_post(f":robot: **[자동매매 시작]** {_today()} (모드: {config.TRADING_MODE})")
 
+    discord_post(":arrows_counterclockwise: **[1/4]** 일봉 데이터 최신화 중...")
     refresh_daily_data()
     setups = strategy.compute_setups(load_watchlist())
+    if setups:
+        discord_post(f":mag: **[2/4]** 오늘 진입 후보 {len(setups)}종목: "
+                     f"{', '.join(list(setups)[:15])}{' ...' if len(setups) > 15 else ''}")
+    else:
+        discord_post(":no_entry: **[2/4]** 시장필터 미충족(코스피 약세) 또는 후보 없음 -> 오늘 신규 진입 안 함")
 
     access_token = get_access_token()
 
     _wait_until(*MARKET_OPEN)
     time.sleep(60)  # 시가 형성/동시호가 직후 혼잡 회피
 
+    discord_post(":bell: **[3/4]** 장 시작. 오버나잇 포지션 청산 진행...")
     sold = sell_open_positions(access_token)
+    if not sold:
+        discord_post(":white_check_mark: 청산 대상 없음 (보유 중인 오버나잇 포지션 없음)")
 
     # 지수 타이밍 전략 (ETF_BUDGET_KRW > 0일 때만 동작, 돌파 전략과 자본 분리)
     try:
@@ -157,6 +172,16 @@ def run_trading_day() -> dict:
     except Exception:
         logger.exception("ETF 타이밍 처리 실패 (돌파 전략은 계속 진행)")
         etf_action = "error"
+
+    # ETF 상태 알림 (매수/매도는 etf_timing이 이미 별도 알림, 여기선 유지/관망/오류만)
+    _etf_msgs = {
+        "hold": ":chart_with_upwards_trend: **[지수 타이밍]** 코스피 200일선 위 -> KODEX200 보유 유지",
+        "cash": ":moneybag: **[지수 타이밍]** 코스피 200일선 아래 -> 현금 관망 (매수 안 함)",
+        "no-data": ":grey_question: **[지수 타이밍]** 지수 데이터 부족으로 판단 보류",
+        "error": ":rotating_light: **[지수 타이밍]** 처리 중 오류 (logs/trader.log 확인)",
+    }
+    if etf_action in _etf_msgs:
+        discord_post(_etf_msgs[etf_action])
 
     # 손실 차단기: 실현 누적손실이 한도를 넘으면 신규 진입을 막고 사람에게 알림
     loss_halted, pnl = safety.loss_limit_halt()

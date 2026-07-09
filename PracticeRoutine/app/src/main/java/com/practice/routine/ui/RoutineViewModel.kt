@@ -7,44 +7,41 @@ import kotlinx.coroutines.launch
 
 class RoutineViewModel(app: Application) : AndroidViewModel(app) {
     private val db = RoutineDatabase.getInstance(app)
-    private val repo = RoutineRepository(db.routineDao(), db.presetDao())
+    private val repo = RoutineRepository(db.routineDao(), db.presetDao(), db.branchDao())
 
-    val items: LiveData<List<RoutineItem>> = repo.allItems.asLiveData()
-    val presets: LiveData<List<RoutinePreset>> = repo.allPresets.asLiveData()
+    // 최상위 항목(STEP/CHOICE)
+    val topLevelItems: LiveData<List<RoutineItem>> = repo.topLevelItems.asLiveData()
     val presetSummaries: LiveData<List<PresetSummary>> = repo.presetSummaries.asLiveData()
 
     fun add(name: String, minutes: Int, note: String? = null, repeatCount: Int = 1) = viewModelScope.launch {
-        val currentCount = repo.getAllOnce().size
-        repo.insert(RoutineItem(name = name, durationMinutes = minutes, order = currentCount, note = note, repeatCount = repeatCount))
+        repo.insertStep(name, minutes, note, repeatCount, branchId = null)
     }
 
     fun update(item: RoutineItem) = viewModelScope.launch { repo.update(item) }
 
-    fun delete(item: RoutineItem) = viewModelScope.launch { repo.delete(item) }
+    fun delete(item: RoutineItem) = viewModelScope.launch { repo.deleteItem(item) }
 
-    fun reorder(items: List<RoutineItem>) = viewModelScope.launch { repo.reorder(items) }
+    fun deleteMultiple(items: List<RoutineItem>) = viewModelScope.launch { repo.deleteItems(items) }
 
-    fun saveCurrentAsPreset(name: String) = viewModelScope.launch {
-        val currentItems = repo.getAllOnce()
-        if (currentItems.isNotEmpty()) {
-            repo.savePreset(name, currentItems)
-        }
+    fun reorder(items: List<RoutineItem>) = viewModelScope.launch { repo.reorderContainer(items) }
+
+    fun addChoice(onCreated: (Int) -> Unit) = viewModelScope.launch {
+        val id = repo.addChoice()
+        onCreated(id)
     }
 
-    fun loadPreset(preset: RoutinePreset) = viewModelScope.launch {
-        val items = repo.loadPreset(preset.id)
-        repo.replaceAllItems(items)
-    }
+    fun saveCurrentAsPreset(name: String) = viewModelScope.launch { repo.savePreset(name) }
 
-    fun deletePreset(preset: RoutinePreset) = viewModelScope.launch {
-        repo.deletePreset(preset)
-    }
+    fun loadPreset(preset: RoutinePreset) = viewModelScope.launch { repo.loadPreset(preset.id) }
 
-    fun deleteMultiple(items: List<RoutineItem>) = viewModelScope.launch {
-        items.forEach { repo.delete(it) }
-    }
+    fun deletePreset(preset: RoutinePreset) = viewModelScope.launch { repo.deletePreset(preset) }
 
     fun deleteMultiplePresets(presets: List<RoutinePreset>) = viewModelScope.launch {
         presets.forEach { repo.deletePreset(it) }
+    }
+
+    /** 현재 루틴 트리를 비동기로 로드(메인 리스트 렌더/시간범위/시작 선택에 사용). */
+    fun loadTree(onLoaded: (RoutineTree) -> Unit) = viewModelScope.launch {
+        onLoaded(repo.buildTree())
     }
 }

@@ -25,6 +25,7 @@ class PresetEditActivity : AppCompatActivity() {
     private lateinit var adapter: RoutineAdapter
     private val workingItems = mutableListOf<RoutineItem>()
     private var presetId: Int = -1
+    private var presetHasTree = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,8 +90,21 @@ class PresetEditActivity : AppCompatActivity() {
             val presetItems = withContext(Dispatchers.IO) {
                 RoutineDatabase.getInstance(this@PresetEditActivity).presetDao().getPresetItems(presetId)
             }
+            // 갈래(CHOICE)가 포함된 프리셋은 이 단순 편집 화면에서 다루지 않는다(트리 손상 방지).
+            presetHasTree = presetItems.any { it.type == com.practice.routine.data.ItemType.CHOICE }
+            if (presetHasTree) {
+                binding.btnSave.isEnabled = false
+                Toast.makeText(
+                    this@PresetEditActivity,
+                    "갈래가 포함된 프리셋은 여기서 편집할 수 없어요. 불러온 뒤 메인에서 수정해 다시 저장하세요.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            val topSteps = presetItems.filter {
+                it.branchId == null && it.type == com.practice.routine.data.ItemType.STEP
+            }.sortedBy { it.order }
             workingItems.clear()
-            presetItems.forEachIndexed { index, pi ->
+            topSteps.forEachIndexed { index, pi ->
                 workingItems.add(RoutineItem(name = pi.name, durationMinutes = pi.durationMinutes, order = index, note = pi.note, repeatCount = pi.repeatCount))
             }
             adapter.submitList(workingItems.toList())
@@ -143,6 +157,10 @@ class PresetEditActivity : AppCompatActivity() {
     }
 
     private fun saveChanges() {
+        if (presetHasTree) {
+            Toast.makeText(this, "갈래가 포함된 프리셋은 여기서 저장할 수 없어요.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val newName = binding.etPresetName.text?.toString()?.trim() ?: ""
         if (newName.isEmpty()) {
             Toast.makeText(this, "루틴 이름을 입력해주세요.", Toast.LENGTH_SHORT).show()
@@ -155,7 +173,7 @@ class PresetEditActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val db = RoutineDatabase.getInstance(this@PresetEditActivity)
-            val repo = RoutineRepository(db.routineDao(), db.presetDao())
+            val repo = RoutineRepository(db.routineDao(), db.presetDao(), db.branchDao())
             withContext(Dispatchers.IO) {
                 db.presetDao().updatePresetNameById(presetId, newName)
                 repo.replacePresetItems(presetId, workingItems)

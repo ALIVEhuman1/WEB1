@@ -21,14 +21,23 @@ interface PresetDao {
     suspend fun updatePresetNameById(id: Int, name: String)
 
     @Insert
-    suspend fun insertPresetItem(item: PresetItem)
+    suspend fun insertPresetItem(item: PresetItem): Long
 
     @Query("SELECT * FROM preset_items WHERE presetId = :presetId ORDER BY `order` ASC")
     suspend fun getPresetItems(presetId: Int): List<PresetItem>
+
+    @Insert
+    suspend fun insertPresetBranch(branch: PresetBranch): Long
+
+    @Query("SELECT * FROM preset_branches WHERE presetId = :presetId ORDER BY `order` ASC")
+    suspend fun getPresetBranches(presetId: Int): List<PresetBranch>
 
     @Delete
     suspend fun deletePreset(preset: RoutinePreset)
 
     @Query("DELETE FROM preset_items WHERE presetId = :presetId")
     suspend fun deletePresetItems(presetId: Int)
+
+    @Query("DELETE FROM preset_branches WHERE presetId = :presetId")
+    suspend fun deletePresetBranches(presetId: Int)
 }

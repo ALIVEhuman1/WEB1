@@ -11,7 +11,8 @@ class RoutineAdapter(
     private val onEdit: (RoutineItem) -> Unit,
     private val onDelete: (RoutineItem) -> Unit,
     private val onReorder: (List<RoutineItem>) -> Unit,
-    private val onSelectionChanged: (count: Int) -> Unit = {}
+    private val onSelectionChanged: (count: Int) -> Unit = {},
+    private val selectable: Boolean = true
 ) : RecyclerView.Adapter<RoutineAdapter.VH>() {
 
     private val items = mutableListOf<RoutineItem>()
@@ -93,11 +94,15 @@ class RoutineAdapter(
             holder.btnEdit.setOnClickListener { onEdit(item) }
             holder.btnDelete.setOnClickListener { onDelete(item) }
             holder.itemView.setOnClickListener(null)
-            holder.itemView.setOnLongClickListener {
-                enterSelectionMode()
-                toggleSelection(item)
-                onSelectionChanged(selectedIds.size)
-                true
+            if (selectable) {
+                holder.itemView.setOnLongClickListener {
+                    enterSelectionMode()
+                    toggleSelection(item)
+                    onSelectionChanged(selectedIds.size)
+                    true
+                }
+            } else {
+                holder.itemView.setOnLongClickListener(null)
             }
         }
     }

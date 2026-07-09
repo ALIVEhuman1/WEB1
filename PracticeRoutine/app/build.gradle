@@ -13,8 +13,8 @@ android {
         applicationId "com.practice.routine"
         minSdk 26
         targetSdk 34
-        versionCode 5
-        versionName "1.4"
+        versionCode 6
+        versionName "1.5"
     }
 
     buildTypes {
@@ -58,4 +58,7 @@ dependencies {
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Unit tests (flatten 순수 함수 등)
+    testImplementation 'junit:junit:4.13.2'
 }

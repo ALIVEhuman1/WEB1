@@ -44,6 +44,10 @@
             android:name=".ui.StatsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.BranchEditActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.TimerService"
             android:exported="false"

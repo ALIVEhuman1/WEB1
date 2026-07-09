@@ -4,18 +4,21 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [RoutineItem::class, RoutinePreset::class, PresetItem::class, PracticeLog::class],
-    version = 5,
+    entities = [RoutineItem::class, RoutinePreset::class, PresetItem::class, PracticeLog::class, Branch::class, PresetBranch::class],
+    version = 6,
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class RoutineDatabase : RoomDatabase() {
     abstract fun routineDao(): RoutineDao
     abstract fun presetDao(): PresetDao
     abstract fun practiceLogDao(): PracticeLogDao
+    abstract fun branchDao(): BranchDao
 
     companion object {
         @Volatile private var INSTANCE: RoutineDatabase? = null
@@ -64,6 +67,28 @@ abstract class RoutineDatabase : RoomDatabase() {
             }
         }
 
+        // 갈래(분기) 기능. 기존 항목은 type='STEP', branchId=null 로 채워짐(컬럼 기본값).
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `routine_items` ADD COLUMN `type` TEXT NOT NULL DEFAULT 'STEP'")
+                database.execSQL("ALTER TABLE `routine_items` ADD COLUMN `branchId` INTEGER")
+                database.execSQL("ALTER TABLE `preset_items` ADD COLUMN `type` TEXT NOT NULL DEFAULT 'STEP'")
+                database.execSQL("ALTER TABLE `preset_items` ADD COLUMN `branchId` INTEGER")
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `branches` " +
+                    "(`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`choiceItemId` INTEGER NOT NULL, `order` INTEGER NOT NULL, " +
+                    "`label` TEXT NOT NULL, `isDefault` INTEGER NOT NULL)"
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `preset_branches` " +
+                    "(`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`presetId` INTEGER NOT NULL, `choicePresetItemId` INTEGER NOT NULL, " +
+                    "`order` INTEGER NOT NULL, `label` TEXT NOT NULL, `isDefault` INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): RoutineDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -71,7 +96,7 @@ abstract class RoutineDatabase : RoomDatabase() {
                     RoutineDatabase::class.java,
                     "routine_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build().also { INSTANCE = it }
             }
     }

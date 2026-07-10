@@ -27,6 +27,7 @@ import com.practice.routine.data.*
 import com.practice.routine.databinding.ActivityMainBinding
 import com.practice.routine.ui.BranchEditActivity
 import com.practice.routine.ui.MainListAdapter
+import com.practice.routine.ui.MapActivity
 import com.practice.routine.ui.PresetListActivity
 import com.practice.routine.ui.RoutineViewModel
 import com.practice.routine.ui.SessionActivity
@@ -86,6 +87,10 @@ class MainActivity : AppCompatActivity() {
             if (!isSelectionMode) binding.drawerLayout.openDrawer(GravityCompat.START)
         }
 
+        binding.drawerItemMap.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startActivity(Intent(this, MapActivity::class.java))
+        }
         binding.drawerItemStats.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, StatsActivity::class.java))

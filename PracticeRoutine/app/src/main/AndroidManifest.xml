@@ -48,6 +48,10 @@
             android:name=".ui.BranchEditActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.MapActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.TimerService"
             android:exported="false"

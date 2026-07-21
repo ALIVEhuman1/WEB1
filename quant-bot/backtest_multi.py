@@ -3,6 +3,9 @@
 전략 (동일 비용 모델: 수수료 0.015%x2 + 거래세 0.18% + 슬리피지 0.1%):
 - breakout   변동성 돌파: 기존 확정 규칙 (K=0.8, 거래량/시장 필터, 익일시가 청산), 고정 watchlist
 - index      지수 타이밍(절대 모멘텀): 코스피 종가 > 200일선이면 지수 보유, 아니면 현금
+- lowvol      저변동성 우량주: 매월 변동성 최저 N종목 매수(저변동성 이상현상), 대형주 대상
+- overnight   오버나잇 프리미엄: 매 거래일 종가 매수 -> 익일 시가 매도
+- turnofmonth 월말·월초 효과: 매월 마지막 거래일 코스피 ETF 매수, 초반 며칠 뒤 매도
 - recover    대장주 회복 재진입 (2026-07 검증 탈락: 목표였던 하락장 21-22에서 거래당 -2.17%,
              누적 -97%, MDD -97%. 가짜 회복/데드캣 바운스마다 잘림. 높은 누적은 복리 아티팩트
              + 승률 23% 복권형. 롱온리로 폭락장 정답은 현금 -> 참고용)
@@ -23,6 +26,7 @@
     python backtest_multi.py --start 20250101         # 구간 지정
     python backtest_multi.py --strategies momentum,index
     python backtest_multi.py --split --strategies breakout,index,recover,relstr  # 스윙 검증
+    python backtest_multi.py --split --strategies breakout,index,lowvol,overnight,turnofmonth
 """
 import argparse
 
@@ -203,6 +207,19 @@ def relstr_trades(a: dict, idx_ret: dict, idx_weak: dict) -> list[dict]:
     return _hold_until(a, entry, exit_, 60)
 
 
+def overnight_trades(a: dict) -> list[dict]:
+    """오버나잇 프리미엄: 매 거래일 종가 매수 -> 익일 시가 매도 (밤새 보유).
+    breakout의 진짜 수익원(익일시가 청산)을 순수하게 떼어내 검증. 유동성 필터 적용.
+    """
+    o, c, dates = a["o"], a["c"], a["dates"]
+    entry = c[:-1] * (1 + SLIPPAGE_RATE)
+    ret = (o[1:] / entry) * (1 - ROUND_TRIP_COST) - 1
+    with np.errstate(invalid="ignore"):
+        ok = a["turnover_ma"][:-1] > MIN_TURNOVER
+    return [{"date": d, "ret": float(r), "hold": 1}
+            for d, r in zip(dates[1:][ok], ret[ok])]
+
+
 MOMENTUM_TOP_N = 20
 MOMENTUM_LOOKBACK = 126  # 약 6개월
 
@@ -248,6 +265,68 @@ def momentum_series(panel: pd.DataFrame, to_panel: pd.DataFrame) -> tuple[pd.Ser
     return daily, pd.DataFrame(trade_rows)
 
 
+LOWVOL_TOP_N = 10        # 워치리스트 50종목 중 최저변동성 10종목
+LOWVOL_LOOKBACK = 60     # 변동성 측정 창 (약 3개월)
+
+
+def _watchlist_panel() -> pd.DataFrame:
+    """워치리스트 종가를 코스피 거래일 캘린더에 정렬한 패널 (lowvol용, ~소용량)."""
+    from main import load_watchlist
+
+    cal = [r["date"] for r in db.get_daily_candles(INDEX_CODE)]
+    if not cal:
+        raise RuntimeError("lowvol 전략은 코스피(KS11) 데이터가 필요합니다. collect_history_fdr.py 먼저 실행.")
+    date_pos = {d: i for i, d in enumerate(cal)}
+    cols, codes = [], []
+    for code in load_watchlist():
+        df = db.get_daily_candles_df(code)
+        if len(df) < LOWVOL_LOOKBACK + 20:
+            continue
+        df = df.sort_values("date").reset_index(drop=True)
+        pos = np.fromiter((date_pos.get(d, -1) for d in df["date"].to_numpy()), dtype=np.int64)
+        mask = pos >= 0
+        col = np.full(len(cal), np.nan, dtype=np.float32)
+        col[pos[mask]] = df["close"].astype(float).to_numpy()[mask]
+        cols.append(col)
+        codes.append(code)
+    return pd.DataFrame(np.column_stack(cols), index=cal, columns=codes)
+
+
+def lowvol_series(panel: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
+    """매월 말 최근 변동성이 가장 낮은 N종목 매수, 다음 달 보유 (저변동성 이상현상)."""
+    rets = panel.pct_change()
+    vol = rets.rolling(LOWVOL_LOOKBACK).std()
+    dates = panel.index.to_list()
+    date_pos = {d: i for i, d in enumerate(dates)}
+    month_ends = [dates[i] for i in range(len(dates) - 1) if dates[i][:6] != dates[i + 1][:6]]
+
+    daily_parts, trade_rows, prev = [], [], set()
+    for mi, me in enumerate(month_ends):
+        i = date_pos[me]
+        if i < LOWVOL_LOOKBACK:
+            continue
+        v = vol.loc[me].dropna()
+        if v.empty:
+            continue
+        low = set(v.nsmallest(LOWVOL_TOP_N).index)
+        next_i = date_pos[month_ends[mi + 1]] if mi + 1 < len(month_ends) else len(dates) - 1
+        hold_dates = dates[i + 1:next_i + 1]
+        if not hold_dates:
+            continue
+        block = rets.loc[hold_dates, list(low)].mean(axis=1)
+        block.iloc[0] -= (len(low - prev) / len(low)) * (ROUND_TRIP_COST + SLIPPAGE_RATE)
+        daily_parts.append(block)
+        for code in low:
+            entry, exit_ = panel.loc[me, code], panel.loc[hold_dates[-1], code]
+            if pd.notna(entry) and pd.notna(exit_):
+                cost = (ROUND_TRIP_COST + SLIPPAGE_RATE) if code not in prev else 0.0
+                trade_rows.append({"date": hold_dates[-1], "ret": exit_ / entry - 1 - cost,
+                                   "hold": len(hold_dates)})
+        prev = low
+    daily = pd.concat(daily_parts).fillna(0.0) if daily_parts else pd.Series(dtype=float)
+    return daily, pd.DataFrame(trade_rows)
+
+
 INDEX_SWITCH_COST = 0.0015  # ETF 왕복 비용 가정 (거래세 없음)
 
 
@@ -278,6 +357,26 @@ def index_series() -> tuple[pd.Series, pd.DataFrame]:
                            "ret": cv[-1] / cv[entry_i] - 1 - INDEX_SWITCH_COST,
                            "hold": len(df) - entry_i})
     return daily, pd.DataFrame(trade_rows)
+
+
+TOM_HOLD = 4  # 월말 마지막 거래일 매수 후 보유할 거래일 수 (월말 + 초반 며칠)
+
+
+def turnofmonth_trades() -> pd.DataFrame:
+    """월말·월초 효과: 매월 마지막 거래일 종가에 코스피 ETF 매수, TOM_HOLD 거래일 뒤 매도."""
+    df = db.get_daily_candles_df(INDEX_CODE).sort_values("date").reset_index(drop=True)
+    dates = df["date"].to_list()
+    c = df["close"].astype(float).to_numpy()
+    n = len(dates)
+    month_ends = [i for i in range(n - 1) if dates[i][:6] != dates[i + 1][:6]]
+    rows = []
+    for i in month_ends:
+        exit_i = min(i + TOM_HOLD, n - 1)
+        if exit_i <= i:
+            continue
+        ret = c[exit_i] / c[i] - 1 - INDEX_SWITCH_COST
+        rows.append({"date": dates[exit_i], "ret": float(ret), "hold": exit_i - i})
+    return pd.DataFrame(rows)
 
 
 def _breakout_daily_trades() -> pd.DataFrame:
@@ -331,6 +430,8 @@ def _watchlist_trades(kind: str) -> pd.DataFrame:
         a = _arrays(df)
         if kind == "recover":
             rows.extend(recover_trades(a))
+        elif kind == "overnight":
+            rows.extend(overnight_trades(a))
         else:
             rows.extend(relstr_trades(a, idx_ret, idx_weak))
     return pd.DataFrame(rows)
@@ -397,6 +498,12 @@ def compute_all(names: list[str]) -> dict[str, tuple[pd.Series | None, pd.DataFr
         results["recover"] = (None, _watchlist_trades("recover"))
     if "relstr" in names:
         results["relstr"] = (None, _watchlist_trades("relstr"))
+    if "overnight" in names:
+        results["overnight"] = (None, _watchlist_trades("overnight"))
+    if "lowvol" in names:
+        results["lowvol"] = lowvol_series(_watchlist_panel())
+    if "turnofmonth" in names:
+        results["turnofmonth"] = (None, turnofmonth_trades())
     return results
 
 

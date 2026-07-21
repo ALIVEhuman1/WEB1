@@ -183,6 +183,17 @@ def run_trading_day() -> dict:
     if etf_action in _etf_msgs:
         discord_post(_etf_msgs[etf_action])
 
+    # 저변동성 우량주 (LOWVOL_BUDGET_KRW > 0일 때만, 월 1회 리밸런싱, 자본 분리)
+    try:
+        import lowvol_live
+
+        lowvol_action = lowvol_live.manage_position(access_token, _today())
+    except Exception:
+        logger.exception("저변동성 전략 처리 실패 (나머지 전략은 계속 진행)")
+        lowvol_action = "error"
+    if lowvol_action == "error":
+        discord_post(":rotating_light: **[저변동성]** 처리 중 오류 (logs/trader.log 확인)")
+
     # 손실 차단기: 실현 누적손실이 한도를 넘으면 신규 진입을 막고 사람에게 알림
     loss_halted, pnl = safety.loss_limit_halt()
     if loss_halted:
@@ -196,13 +207,13 @@ def run_trading_day() -> dict:
 
     summary = {"date": _today(), "sold": sold, "bought": bought,
                "candidates": len(setups), "etf": etf_action,
-               "halted": loss_halted}
-    logger.info("=== 자동매매 종료: 청산 %s, 신규매수 %s, ETF %s ===",
-                sold or "없음", bought or "없음", etf_action)
+               "lowvol": lowvol_action, "halted": loss_halted}
+    logger.info("=== 자동매매 종료: 청산 %s, 신규매수 %s, ETF %s, lowvol %s ===",
+                sold or "없음", bought or "없음", etf_action, lowvol_action)
     discord_post(
         f":clipboard: **[자동매매 {_today()}]** 후보 {len(setups)}종목 / "
         f"청산 {len(sold)}건({', '.join(sold) if sold else '-'}) / "
         f"매수 {len(bought)}건({', '.join(bought) if bought else '-'}) / "
-        f"ETF {etf_action}"
+        f"ETF {etf_action} / lowvol {lowvol_action}"
     )
     return summary

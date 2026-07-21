@@ -3,6 +3,8 @@
 전략 (동일 비용 모델: 수수료 0.015%x2 + 거래세 0.18% + 슬리피지 0.1%):
 - breakout   변동성 돌파: 기존 확정 규칙 (K=0.8, 거래량/시장 필터, 익일시가 청산), 고정 watchlist
 - index      지수 타이밍(절대 모멘텀): 코스피 종가 > 200일선이면 지수 보유, 아니면 현금
+- recover    대장주 회복 재진입(롱온리 스윙): 깊게 빠진 대형주가 60일선 회복 시 매수, 이탈 시 매도
+- relstr     상대강도 스윙(대조군): 약세장에서 코스피보다 강한 대형주 매수, 60일선 이탈 시 매도
 - gapdown    갭 하락 반등 (2026-07 검증 탈락: 거래당 -0.44%, 하락장에서만 +0.26% -> 참고용)
 - meanrev    평균회귀 (2026-07 검증 탈락 -> 참고용)
 - trend      5/20 골든크로스 (2026-07 검증 탈락 -> 참고용)
@@ -17,6 +19,7 @@
     python backtest_multi.py                          # 전체 기간만
     python backtest_multi.py --start 20250101         # 구간 지정
     python backtest_multi.py --strategies momentum,index
+    python backtest_multi.py --split --strategies breakout,index,recover,relstr  # 스윙 검증
 """
 import argparse
 
@@ -55,8 +58,12 @@ def _arrays(df: pd.DataFrame) -> dict:
         "c": c.to_numpy(),
         "ma5": c.rolling(5).mean().to_numpy(),
         "ma20": c.rolling(20).mean().to_numpy(),
+        "ma60": c.rolling(60).mean().to_numpy(),
         "ma200": c.rolling(200).mean().to_numpy(),
         "hi252": c.shift(1).rolling(252).max().to_numpy(),
+        # 낙폭 판정용 (오늘 포함 후행 창, 미래 참조 없음)
+        "roll_hi252": c.rolling(252, min_periods=120).max().to_numpy(),
+        "roll_lo60": c.rolling(60, min_periods=40).min().to_numpy(),
         "turnover_ma": (c * df["volume"]).rolling(60).mean().to_numpy(),
     }
 
@@ -100,6 +107,10 @@ def _hold_until(a: dict, entry_signal: np.ndarray, exit_signal: np.ndarray, star
             ret = (o[t + 1] / entry_price) * (1 - ROUND_TRIP_COST) - 1
             trades.append({"date": dates[t + 1], "ret": ret, "hold": int(t + 1 - holding_from)})
             holding_from = None
+    # 마지막 바까지 청산 안 된 포지션은 최종 시가로 마감 (진행 중인 스윙도 반영)
+    if holding_from is not None:
+        ret = (o[n - 1] / entry_price) * (1 - ROUND_TRIP_COST) - 1
+        trades.append({"date": dates[n - 1], "ret": ret, "hold": int(n - 1 - holding_from)})
     return trades
 
 
@@ -142,6 +153,51 @@ def gapdown_trades(a: dict) -> list[dict]:
     rets = (c[1:][sig] / entry) * (1 - ROUND_TRIP_COST) - 1
     dates = a["dates"][1:][sig]
     return [{"date": d, "ret": float(r), "hold": 1} for d, r in zip(dates, rets)]
+
+
+RECOVER_DRAWDOWN = 0.80   # 최근 고점 대비 -20% 이상 빠졌던 종목만 (딥밸류 조건)
+
+
+def recover_trades(a: dict) -> list[dict]:
+    """대장주 회복 재진입: 깊게 빠졌던 종목이 60일선을 다시 상향 돌파 -> 익일 시가 매수,
+    60일선 이탈 -> 익일 시가 매도 (수개월 스윙). 칼날 잡지 않고 회복 확인 후 진입.
+
+    조건(모두 후행 데이터, 미래 참조 없음):
+    - 60일선 상향 돌파 (회복 신호)
+    - 최근 60일 최저가가 최근 252일 최고가의 80% 이하 (실제로 -20%+ 급락했던 종목)
+    - 유동성 필터
+    """
+    c, ma60 = a["c"], a["ma60"]
+    n = len(c)
+    up = np.zeros(n, dtype=bool)
+    with np.errstate(invalid="ignore"):
+        up[1:] = (c[1:] > ma60[1:]) & (c[:-1] <= ma60[:-1])
+        deep = a["roll_lo60"] <= RECOVER_DRAWDOWN * a["roll_hi252"]
+        entry = up & deep & (a["turnover_ma"] > MIN_TURNOVER)
+        exit_ = c < ma60
+    return _hold_until(a, entry, exit_, 120)
+
+
+def relstr_trades(a: dict, idx_ret: dict, idx_weak: dict) -> list[dict]:
+    """상대강도 스윙(대조군, 회원님 '버티는 종목' 아이디어): 약세장(코스피<20일선)에서
+    자기 60일선 위 & 60일 수익률이 코스피보다 높은 종목 매수, 60일선 이탈 시 매도.
+    """
+    c, ma60, dates = a["c"], a["ma60"], a["dates"]
+    n = len(c)
+    stock_ret60 = np.full(n, np.nan)
+    stock_ret60[60:] = c[60:] / c[:-60] - 1
+    entry = np.zeros(n, dtype=bool)
+    with np.errstate(invalid="ignore"):
+        for t in range(60, n - 1):
+            if not idx_weak.get(dates[t], False):
+                continue
+            ir = idx_ret.get(dates[t])
+            if ir is None or np.isnan(stock_ret60[t]):
+                continue
+            if c[t] > ma60[t] and stock_ret60[t] > ir:   # 지수보다 강하고 자기 추세 유지
+                entry[t] = True
+        exit_ = c < ma60
+    return _hold_until(a, entry, exit_, 60)
 
 
 MOMENTUM_TOP_N = 20
@@ -249,6 +305,34 @@ def _breakout_daily_trades() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _index_return_map(window: int = 60) -> tuple[dict, dict]:
+    """코스피 60일 수익률 맵과 약세장(종가<20일선) 여부 맵. relstr 전략용."""
+    df = db.get_daily_candles_df(INDEX_CODE).sort_values("date").reset_index(drop=True)
+    c = df["close"].astype(float)
+    ret = (c / c.shift(window) - 1)
+    weak = (c < c.rolling(20).mean())
+    return (dict(zip(df["date"], ret)), dict(zip(df["date"], weak)))
+
+
+def _watchlist_trades(kind: str) -> pd.DataFrame:
+    """대장주 워치리스트(50종목)에 recover/relstr 전략을 적용한 거래 목록."""
+    from main import load_watchlist
+
+    idx_ret, idx_weak = _index_return_map() if kind == "relstr" else ({}, {})
+    rows = []
+    for code in load_watchlist():
+        df = db.get_daily_candles_df(code)
+        if len(df) < 130:
+            continue
+        df = df.sort_values("date").reset_index(drop=True)
+        a = _arrays(df)
+        if kind == "recover":
+            rows.extend(recover_trades(a))
+        else:
+            rows.extend(relstr_trades(a, idx_ret, idx_weak))
+    return pd.DataFrame(rows)
+
+
 PER_STOCK_STRATEGIES = {"meanrev": meanrev_trades, "trend": trend_trades,
                         "high52": high52_trades, "gapdown": gapdown_trades}
 
@@ -306,6 +390,10 @@ def compute_all(names: list[str]) -> dict[str, tuple[pd.Series | None, pd.DataFr
         results["breakout"] = (None, _breakout_daily_trades())
     if "index" in names:
         results["index"] = index_series()
+    if "recover" in names:
+        results["recover"] = (None, _watchlist_trades("recover"))
+    if "relstr" in names:
+        results["relstr"] = (None, _watchlist_trades("relstr"))
     return results
 
 

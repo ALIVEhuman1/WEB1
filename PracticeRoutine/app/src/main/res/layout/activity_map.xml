@@ -35,10 +35,25 @@
             android:paddingTop="8dp"
             android:paddingBottom="8dp"
             android:background="@drawable/bg_pill_dark"
-            android:text="핀치로 확대 · 드래그로 이동 · 노드를 눌러보세요"
+            android:text="핀치로 확대 · 드래그로 이동 · 노드를 눌러 수정"
             android:textSize="12sp"
             android:fontFamily="@font/pretendard_medium"
             android:textColor="#CBD5E1" />
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fabAdd"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="20dp"
+            android:contentDescription="추가"
+            android:src="@drawable/ic_plus"
+            app:tint="@color/white"
+            app:backgroundTint="@color/accent"
+            app:borderWidth="0dp"
+            app:elevation="8dp"
+            app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Fab.Squircle" />
 
     </FrameLayout>
 

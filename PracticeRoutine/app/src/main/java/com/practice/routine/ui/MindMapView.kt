@@ -35,8 +35,7 @@ class MindMapView @JvmOverloads constructor(
         val subtitle: String,
         val kind: Kind,
         val choiceItemId: Int = -1,
-        val stepName: String = "",
-        val stepInfo: String = ""
+        val stepItemId: Int = -1
     ) {
         var dx = 0f
         var dy = 0f
@@ -56,7 +55,7 @@ class MindMapView @JvmOverloads constructor(
     private val nodeById = HashMap<String, Node>()
 
     var onChoiceTap: ((choiceItemId: Int) -> Unit)? = null
-    var onStepTap: ((name: String, info: String) -> Unit)? = null
+    var onStepTap: ((itemId: Int) -> Unit)? = null
 
     private val density = resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -127,7 +126,7 @@ class MindMapView @JvmOverloads constructor(
                     val id = "s${idc++}"
                     val x = lastX + nodeW + gapX
                     add(Node(id, x, spineY, nodeW, nodeH, node.item.name, stepSub(node.item), Kind.STEP,
-                        stepName = node.item.name, stepInfo = node.item.note ?: stepSub(node.item)))
+                        stepItemId = node.item.id))
                     prevIds.forEach { edges.add(Edge(it, id)) }
                     prevIds = listOf(id)
                     lastX = x
@@ -159,7 +158,7 @@ class MindMapView @JvmOverloads constructor(
                             lx += nodeW + gapX
                             val sid = "bs${idc++}"
                             add(Node(sid, lx, by, nodeW, nodeH, s.name, stepSub(s), Kind.STEP,
-                                stepName = s.name, stepInfo = s.note ?: stepSub(s)))
+                                stepItemId = s.id))
                             edges.add(Edge(lastId, sid))
                             lastId = sid
                         }
@@ -295,7 +294,7 @@ class MindMapView @JvmOverloads constructor(
             val hit = nodes.lastOrNull { it.contains(wx, wy) } ?: return false
             when (hit.kind) {
                 Kind.CHOICE -> onChoiceTap?.invoke(hit.choiceItemId)
-                Kind.STEP -> onStepTap?.invoke(hit.stepName, hit.stepInfo)
+                Kind.STEP -> onStepTap?.invoke(hit.stepItemId)
                 else -> {}
             }
             return true

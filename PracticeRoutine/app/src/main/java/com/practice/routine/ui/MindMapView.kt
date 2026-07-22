@@ -101,71 +101,73 @@ class MindMapView @JvmOverloads constructor(
         invalidate()
     }
 
-    // ---- layout ----
+    // ---- layout (좌 → 우 가로 흐름) ----
     private fun buildLayout(tree: RoutineTree) {
         nodes.clear(); edges.clear(); nodeById.clear()
-        val nodeW = dp(168f)
-        val nodeH = dp(58f)
-        val gapY = dp(34f)
-        val branchGapX = dp(24f)
-        val cx = 0f
-        var y = 0f
+        val nodeW = dp(162f)
+        val nodeH = dp(56f)
+        val gapX = dp(46f)   // 노드 사이 가로 간격
+        val gapY = dp(22f)   // 갈래(가지) 세로 간격
+        val spineY = 0f
         var idc = 0
 
         fun add(n: Node) { nodes.add(n); nodeById[n.id] = n }
+        fun stepSub(item: com.practice.routine.data.RoutineItem) =
+            if (item.repeatCount > 1) "${item.durationMinutes}분 · ${item.repeatCount}세트" else "${item.durationMinutes}분"
 
-        // root
+        // root (맨 왼쪽)
         val rootId = "root"
-        add(Node(rootId, cx, y, nodeW, nodeH, "연습 루틴", "", Kind.ROOT))
-        y += nodeH + gapY
+        add(Node(rootId, 0f, spineY, nodeW, nodeH, "연습 루틴", "", Kind.ROOT))
         var prevIds = listOf(rootId)
+        var lastX = 0f  // 마지막으로 배치한 척추(spine) 노드의 중심 x
 
         for (node in tree.nodes) {
             when (node) {
                 is RoutineNode.Step -> {
                     val id = "s${idc++}"
-                    val sub = if (node.item.repeatCount > 1)
-                        "${node.item.durationMinutes}분 · ${node.item.repeatCount}세트"
-                    else "${node.item.durationMinutes}분"
-                    add(Node(id, cx, y, nodeW, nodeH, node.item.name, sub, Kind.STEP,
-                        stepName = node.item.name, stepInfo = node.item.note ?: sub))
+                    val x = lastX + nodeW + gapX
+                    add(Node(id, x, spineY, nodeW, nodeH, node.item.name, stepSub(node.item), Kind.STEP,
+                        stepName = node.item.name, stepInfo = node.item.note ?: stepSub(node.item)))
                     prevIds.forEach { edges.add(Edge(it, id)) }
                     prevIds = listOf(id)
-                    y += nodeH + gapY
+                    lastX = x
                 }
                 is RoutineNode.Choice -> {
                     val cid = "c${idc++}"
-                    add(Node(cid, cx, y, nodeW, nodeH, if (node.item.name.isBlank()) "선택" else node.item.name,
+                    val cxp = lastX + nodeW + gapX
+                    add(Node(cid, cxp, spineY, nodeW, nodeH, if (node.item.name.isBlank()) "선택" else node.item.name,
                         "${node.branches.size}개 갈래", Kind.CHOICE, choiceItemId = node.item.id))
                     prevIds.forEach { edges.add(Edge(it, cid)) }
-                    y += nodeH + gapY
-                    val branchTop = y
+
+                    // 갈래는 세로로 나뉘어(fork) 오른쪽으로 뻗어나가고, 다음 노드에서 합류(merge)
                     val n = node.branches.size
+                    val rowH = nodeH + gapY
+                    val totalH = n * nodeH + (n - 1) * gapY
+                    val startY = spineY - totalH / 2f + nodeH / 2f
+                    val branchStartX = cxp + nodeW + gapX
                     val branchEndIds = mutableListOf<String>()
-                    var deepest = branchTop
+                    var maxEndX = cxp
                     node.branches.forEachIndexed { i, bn ->
-                        val bx = cx + (i - (n - 1) / 2f) * (nodeW + branchGapX)
-                        var by = branchTop
+                        val by = startY + i * rowH
                         val bhId = "b${idc++}"
-                        add(Node(bhId, bx, by, nodeW, nodeH, bn.branch.label,
+                        add(Node(bhId, branchStartX, by, nodeW, nodeH, bn.branch.label,
                             "${bn.totalMinutes()}분" + (if (bn.branch.isDefault) " · 기본" else ""), Kind.BRANCH))
                         edges.add(Edge(cid, bhId))
-                        by += nodeH + gapY
                         var lastId = bhId
+                        var lx = branchStartX
                         bn.steps.forEach { s ->
+                            lx += nodeW + gapX
                             val sid = "bs${idc++}"
-                            val sub = if (s.repeatCount > 1) "${s.durationMinutes}분 · ${s.repeatCount}세트" else "${s.durationMinutes}분"
-                            add(Node(sid, bx, by, nodeW, nodeH, s.name, sub, Kind.STEP,
-                                stepName = s.name, stepInfo = s.note ?: sub))
+                            add(Node(sid, lx, by, nodeW, nodeH, s.name, stepSub(s), Kind.STEP,
+                                stepName = s.name, stepInfo = s.note ?: stepSub(s)))
                             edges.add(Edge(lastId, sid))
                             lastId = sid
-                            by += nodeH + gapY
                         }
                         branchEndIds.add(lastId)
-                        if (by > deepest) deepest = by
+                        if (lx > maxEndX) maxEndX = lx
                     }
                     prevIds = branchEndIds
-                    y = deepest + gapY
+                    lastX = maxEndX
                 }
             }
         }
@@ -199,12 +201,13 @@ class MindMapView @JvmOverloads constructor(
     }
 
     private fun drawEdge(canvas: Canvas, a: Node, b: Node) {
-        val sx = a.cx; val sy = a.bottom
-        val ex = b.cx; val ey = b.top
+        // 좌→우: 부모의 오른쪽 가운데 → 자식의 왼쪽 가운데
+        val sx = a.right; val sy = a.cy
+        val ex = b.left; val ey = b.cy
         val path = Path()
         path.moveTo(sx, sy)
-        val midY = (sy + ey) / 2
-        path.cubicTo(sx, midY, ex, midY, ex, ey)
+        val midX = (sx + ex) / 2
+        path.cubicTo(midX, sy, midX, ey, ex, ey)
         canvas.drawPath(path, edgePaint)
     }
 
@@ -253,10 +256,14 @@ class MindMapView @JvmOverloads constructor(
         val minX = nodes.minOf { it.left }
         val maxX = nodes.maxOf { it.right }
         val minY = nodes.minOf { it.top }
+        val maxY = nodes.maxOf { it.bottom }
         val contentW = (maxX - minX).coerceAtLeast(1f)
-        scale = ((width - dp(40f)) / contentW).coerceIn(0.4f, 1.2f)
+        val contentH = (maxY - minY).coerceAtLeast(1f)
+        val sx = (width - dp(48f)) / contentW
+        val sy = (height - dp(48f)) / contentH
+        scale = minOf(sx, sy).coerceIn(0.3f, 1.3f)
         offsetX = width / 2f - ((minX + maxX) / 2f) * scale
-        offsetY = dp(24f) - minY * scale
+        offsetY = height / 2f - ((minY + maxY) / 2f) * scale
         initialized = true
     }
 

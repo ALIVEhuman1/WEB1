@@ -74,6 +74,11 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupObservers()
         setupButtons()
+
+        // 지도(홈)에서 '연습 시작'으로 진입한 경우 바로 시작 플로우 실행
+        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_START_NOW, false)) {
+            startSession()
+        }
     }
 
     private fun setupDrawer() {
@@ -88,8 +93,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.drawerItemMap.setOnClickListener {
+            // 지도가 홈이므로 편집 화면을 닫고 지도로 돌아간다
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            startActivity(Intent(this, MapActivity::class.java))
+            finish()
         }
         binding.drawerItemStats.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -443,5 +449,9 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(this, SessionActivity::class.java).apply {
             putParcelableArrayListExtra(SessionActivity.EXTRA_ITEMS, ArrayList(steps))
         })
+    }
+
+    companion object {
+        const val EXTRA_START_NOW = "EXTRA_START_NOW"
     }
 }

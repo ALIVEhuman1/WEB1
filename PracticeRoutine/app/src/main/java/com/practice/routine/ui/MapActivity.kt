@@ -26,10 +26,18 @@ class MapActivity : AppCompatActivity() {
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.inflateMenu(com.practice.routine.R.menu.menu_map)
         binding.toolbar.setOnMenuItemClickListener {
             if (it.itemId == com.practice.routine.R.id.action_reset_view) { binding.mindMap.resetView(); true } else false
+        }
+
+        binding.btnEdit.setOnClickListener {
+            startActivity(Intent(this, com.practice.routine.MainActivity::class.java))
+        }
+        binding.btnStart.setOnClickListener {
+            startActivity(Intent(this, com.practice.routine.MainActivity::class.java).apply {
+                putExtra(com.practice.routine.MainActivity.EXTRA_START_NOW, true)
+            })
         }
 
         binding.mindMap.onChoiceTap = { choiceItemId ->

@@ -15,6 +15,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: 코드 체크아웃
@@ -52,3 +54,16 @@ jobs:
           name: PracticeRoutine-debug-apk
           path: PracticeRoutine/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      # 태블릿/모바일에서 클릭 한 번으로 받도록 릴리스로도 게시 (claude 작업 브랜치 한정)
+      - name: APK 릴리스 게시
+        if: startsWith(github.ref, 'refs/heads/claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: 최신 APK (연습 루틴)
+          prerelease: true
+          files: PracticeRoutine/app/build/outputs/apk/debug/app-debug.apk
+          body: |
+            연습 루틴 앱 최신 디버그 APK 입니다.
+            아래 Assets 의 app-debug.apk 를 눌러 받으세요. (태블릿 브라우저/깃허브 앱에서 바로 다운로드 가능)

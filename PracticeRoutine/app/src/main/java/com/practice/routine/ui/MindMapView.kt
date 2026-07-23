@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
 import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -56,6 +57,8 @@ class MindMapView @JvmOverloads constructor(
 
     var onChoiceTap: ((choiceItemId: Int) -> Unit)? = null
     var onStepTap: ((itemId: Int) -> Unit)? = null
+    var onStepLongPress: ((itemId: Int) -> Unit)? = null
+    var onChoiceLongPress: ((choiceItemId: Int) -> Unit)? = null
 
     private val density = resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -287,6 +290,8 @@ class MindMapView @JvmOverloads constructor(
         }
     })
 
+    private var longPressed = false
+
     private val tapDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             val wx = (e.x - offsetX) / scale
@@ -299,6 +304,17 @@ class MindMapView @JvmOverloads constructor(
             }
             return true
         }
+
+        override fun onLongPress(e: MotionEvent) {
+            val wx = (e.x - offsetX) / scale
+            val wy = (e.y - offsetY) / scale
+            val hit = nodes.lastOrNull { it.contains(wx, wy) } ?: return
+            when (hit.kind) {
+                Kind.STEP -> { longPressed = true; performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onStepLongPress?.invoke(hit.stepItemId) }
+                Kind.CHOICE -> { longPressed = true; performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onChoiceLongPress?.invoke(hit.choiceItemId) }
+                else -> {}
+            }
+        }
     })
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -307,12 +323,13 @@ class MindMapView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                lastX = event.x; lastY = event.y; moved = false
+                lastX = event.x; lastY = event.y; moved = false; longPressed = false
                 val wx = (event.x - offsetX) / scale
                 val wy = (event.y - offsetY) / scale
                 dragNode = nodes.lastOrNull { it.contains(wx, wy) && it.kind != Kind.ROOT }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (longPressed) return true // 롱프레스 메뉴 중에는 이동/드래그 안 함
                 if (scaleDetector.isInProgress) { dragNode = null; return true }
                 val dxS = event.x - lastX
                 val dyS = event.y - lastY

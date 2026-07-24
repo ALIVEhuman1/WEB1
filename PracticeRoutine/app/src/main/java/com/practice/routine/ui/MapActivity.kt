@@ -41,7 +41,7 @@ class MapActivity : AppCompatActivity() {
             if (it.itemId == R.id.action_reset_view) { binding.mindMap.resetView(); true } else false
         }
 
-        binding.fabAdd.setOnClickListener { showAddMenu() }
+        binding.fabAdd.setOnClickListener { showStepDialog(null) } // ＋ = 단계 추가
         binding.btnStart.setOnClickListener { startSession() }
 
         binding.mindMap.onChoiceTap = { choiceItemId -> openBranchEditor(choiceItemId) }
@@ -113,16 +113,6 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 추가 ----
-    private fun showAddMenu() {
-        AlertDialog.Builder(this)
-            .setTitle("추가")
-            .setItems(arrayOf("단계 추가", "갈래 추가 (선택 노드)")) { _, which ->
-                if (which == 0) showStepDialog(null) else addChoice()
-            }
-            .show()
-    }
-
     private fun addChoice() {
         lifecycleScope.launch {
             val id = withContext(Dispatchers.IO) { repo.addChoice() }
@@ -133,16 +123,24 @@ class MapActivity : AppCompatActivity() {
     // ---- 노드 롱프레스 컨텍스트 메뉴 ----
     private fun showStepContextMenu(itemId: Int) {
         AlertDialog.Builder(this)
-            .setItems(arrayOf("편집", "삭제")) { _, which ->
-                if (which == 0) editStep(itemId) else deleteStepById(itemId)
+            .setItems(arrayOf("편집", "삭제", "갈래 추가")) { _, which ->
+                when (which) {
+                    0 -> editStep(itemId)
+                    1 -> deleteStepById(itemId)
+                    2 -> addChoice()
+                }
             }
             .show()
     }
 
     private fun showChoiceContextMenu(choiceItemId: Int) {
         AlertDialog.Builder(this)
-            .setItems(arrayOf("갈래 편집", "삭제")) { _, which ->
-                if (which == 0) openBranchEditor(choiceItemId) else deleteChoiceById(choiceItemId)
+            .setItems(arrayOf("갈래 편집", "삭제", "갈래 추가")) { _, which ->
+                when (which) {
+                    0 -> openBranchEditor(choiceItemId)
+                    1 -> deleteChoiceById(choiceItemId)
+                    2 -> addChoice()
+                }
             }
             .show()
     }

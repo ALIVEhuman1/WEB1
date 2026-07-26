@@ -168,6 +168,8 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 | `ai_report.py` | Claude가 당일 매매의 '실행 품질'을 채점해 Discord 전송 (전략 불변) |
 | `ai_monthly.py` | Claude 월간 분석: 백테스트 기대치 대비 성과 + 개선 가설 제안 (자동 반영 없음) |
 | `etf_timing.py` | 지수 타이밍 전략: 코스피>200일선이면 KODEX200 보유, 이탈 시 현금 (`ETF_BUDGET_KRW`로 활성화) |
+| `lowvol_live.py` | 저변동성 우량주 월간 리밸런싱(방어형): 변동성 최저 N종목 보유 (`LOWVOL_BUDGET_KRW`로 활성화) |
+| `report.py` | 전략별(돌파/지수/저변동성) 실현·미실현 손익 리포트. `python report.py [--discord]` |
 
 ## 8-2. 자동매매 (3단계, 모의투자)
 
@@ -226,6 +228,8 @@ Claude API로 두 가지 자동 리뷰를 돌릴 수 있습니다. **둘 다 매
 월간 분석의 개선 제안은 반드시 백테스트 검증과 운용자 승인을 거쳐 수동 반영합니다.
 
 ```bash
+python report.py       # 전략별 실현·미실현 손익 현황 (터미널)
+python report.py --discord   # 위 내용을 Discord로도 전송
 python ai_report.py    # 당일 실행 품질 채점 -> Discord
 python ai_monthly.py   # 이번 달 분석 + 백테스트할 가설 제안 -> Discord
 python ai_monthly.py --month 202607   # 특정 월 분석
@@ -236,6 +240,8 @@ python ai_monthly.py --month 202607   # 특정 월 분석
 10 7 * * 1-5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python ai_report.py
 # 매월 1일 09:00 KST 월간 분석 = 00:00 UTC
 0 0 1 * * cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python ai_monthly.py
+# (선택) 매주 토 08:00 KST 주간 성과 리포트 = 금 23:00 UTC
+0 23 * * 5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python report.py --discord
 ```
 
 ## 주의사항

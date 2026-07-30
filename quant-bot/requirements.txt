@@ -3,3 +3,4 @@ python-dotenv>=1.0.0
 pandas>=2.0.0
 finance-datareader>=0.9.90
 anthropic>=0.92.0
+yfinance>=0.2.40   # US RSI(2) 백테스트 데이터 (스크리닝, KIS 미사용)

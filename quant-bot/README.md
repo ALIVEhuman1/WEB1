@@ -170,6 +170,8 @@ python backtest.py --sweep --market-filter  # 코스피 지수가 전일 20일 �
 | `etf_timing.py` | 지수 타이밍 전략: 코스피>200일선이면 KODEX200 보유, 이탈 시 현금 (`ETF_BUDGET_KRW`로 활성화) |
 | `lowvol_live.py` | 저변동성 우량주 월간 리밸런싱(방어형): 변동성 최저 N종목 보유 (`LOWVOL_BUDGET_KRW`로 활성화) |
 | `report.py` | 전략별(돌파/지수/저변동성) 실현·미실현 손익 리포트. `python report.py [--discord]` |
+| `us_universe.py` | US RSI(2) 백테스트용 S&P500 유동성 상위 ~100종목 (하드코딩) |
+| `backtest_us_rsi2.py` | US RSI(2) 평균회귀 백테스트 (yfinance). `python backtest_us_rsi2.py --split` |
 
 ## 8-2. 자동매매 (3단계, 모의투자)
 

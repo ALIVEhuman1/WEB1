@@ -54,9 +54,16 @@ export const CONFIG = {
     height: 1.8,
     moveSpeed: 9,          // units/sec
     maxHp: 100,
-    color: 0x6fd0ff,
+    color: 0x6fd0ff,       // 몸통/팔 색
     hurtInvuln: 0.5,       // 피격 후 무적 시간(접촉 도트 방지)
     contactKnockResist: 1,
+    // 간단한 사람 형태 모델 색상
+    parts: {
+      body: 0x6fd0ff,
+      legs: 0x35435c,
+      head: 0xf0c9a4,
+      gun: 0x262b33,
+    },
   },
 
   // ---- 대시 ----

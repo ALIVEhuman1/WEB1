@@ -5,20 +5,15 @@
 
 ## 실행 방법
 
-### 가장 쉬운 방법 — 설치·서버 없이 더블클릭
-`play-standalone.html` 파일 하나만 내려받아 **더블클릭**하면 브라우저에서 바로 실행된다.
-(모든 코드·라이브러리를 한 파일에 인라인한 자체 완결 버전. 인터넷 연결도 필요 없다.)
-
-### 개발용 — 코드를 고치며 실행
 ```bash
 cd prototype-002-3d-ammo
-npm install
+npm install      # 처음 한 번만
 npm run dev
 ```
 터미널에 뜨는 주소(기본 `http://localhost:5173`)를 브라우저로 연다.
 여기서 뜨는 `localhost` 는 인터넷 서버가 아니라 **내 컴퓨터 안에서만 도는 로컬 실행**이다.
 
-`npm run build` 를 하면 위의 `play-standalone.html` 과 같은 단일 HTML(`dist/index.html`)이 다시 만들어진다.
+빌드 확인은 `npm run build`, 정적 미리보기는 `npm run preview`.
 
 ## 조작
 

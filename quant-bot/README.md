@@ -246,6 +246,47 @@ python ai_monthly.py --month 202607   # 특정 월 분석
 0 23 * * 5 cd /home/USERNAME/WEB1/quant-bot && /home/USERNAME/WEB1/quant-bot/venv/bin/python report.py --discord
 ```
 
+## 8-3. 미국 자동매매 (① 지수타이밍 + ② 돌파)
+
+미국주식 전략 두 가지. 백테스트로 검증했습니다(③ RSI2 평균회귀는 하락장에서 시장필터로도
+방어가 안 돼 폐기). 국내 봇(`run_trader.py`)과 **완전 분리**되어 미장 스케줄로 따로 돕니다.
+
+- **① 지수타이밍** (`us_index_timing.py`, 방패): SPY 종가>200일선이면 SPY 보유, 아니면 현금.
+  2008 금융위기 -23%→+0.9%, 2022 -18.6%→-16.2%로 하락장 MDD를 반토막.
+- **② 돌파+시장필터** (`us_breakout_live.py`, 창): SPY>200일선일 때만, 개별종목 100일 신고가
+  돌파 매수 → ATR×3 샹들리에 트레일링 청산. 하락장은 필터로 관망, 상승장 추세추종.
+  ⚠️ 유니버스가 현재 대형주라 백테스트 절대수익엔 생존편향 있음(국면 행동은 유효).
+
+### 안전 단계 (실돈 나가기 전 반드시)
+
+1. **드라이런** (기본): `US_INDEX_BUDGET_USD=0`, `US_BREAKOUT_BUDGET_USD=0`이면 실주문 없이
+   매일 신호만 Discord로 통보합니다. 며칠 돌려 신호가 백테스트대로 나오는지 눈으로 확인.
+2. **모의투자**: `KIS_TRADING_MODE=vps` 상태에서 예산을 소액(예: 지수 $600, 돌파 $3000)으로
+   올려 체결을 확인. ⚠️ `kis_order_us.py`의 **TR ID·거래소코드는 KIS 최신 문서와 대조** 후
+   1주 테스트로 응답을 검증하세요(해외 API는 계정/버전차가 있음).
+3. **실전**: 검증 끝나면 `KIS_TRADING_MODE=prod` + `ALLOW_PROD_TRADING=true`.
+
+```bash
+# 미국 일봉 먼저 수집 (SPY + 유니버스)
+python us_data.py
+
+# 하루치 실행 (일봉 갱신 → 신호 → ①② 관리). 예산 0이면 드라이런.
+python run_us_trader.py
+
+# 백테스트 재확인
+python backtest_us_index.py --split                 # ① 지수타이밍
+python backtest_us_breakout.py --split              # ② 돌파 (--no-filter로 필터효과 비교)
+```
+
+### cron (미 장마감 16:00 ET 직후 실행 → 다음 세션 체결, 백테스트와 정합)
+
+```bash
+# ET 서버: 평일 16:15 ET
+15 16 * * 1-5 cd /path/to/quant-bot && /path/to/venv/bin/python run_us_trader.py
+# KST 서버: 대략 06:15 KST (겨울 EST=한국-14h, 여름 EDT=한국-13h, 화~토로 지정)
+15 6  * * 2-6 cd /path/to/quant-bot && /path/to/venv/bin/python run_us_trader.py
+```
+
 ## 주의사항
 
 - 이 저장소는 모의투자(vps)를 기본값으로 사용합니다. 실전투자 전환 시 `.env`의 `KIS_TRADING_MODE=prod`로 변경하고,

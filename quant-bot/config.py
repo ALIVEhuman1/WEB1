@@ -59,6 +59,21 @@ ETF_BUDGET_KRW = int(os.getenv("ETF_BUDGET_KRW", "0"))
 LOWVOL_BUDGET_KRW = int(os.getenv("LOWVOL_BUDGET_KRW", "0"))
 LOWVOL_TOP_N = int(os.getenv("LOWVOL_TOP_N", "10"))     # 보유 종목 수 (변동성 최저)
 
+# ---- 미국 전략 (검증 완료: ① 지수타이밍, ② 돌파+시장필터. ③ RSI2는 폐기) ----
+# 실주문은 KIS 해외주식 API 경유. 예산=0이면 비활성(신호 통보만 하는 드라이런).
+# 실돈 전환 전 반드시 모의투자(vps)로 검증할 것. 실전(prod)은 ALLOW_PROD_TRADING=true 필요.
+
+# ① 지수타이밍(SPY 200일선). SPY 1주 단위 매수하므로 최소 현재가(약 $550) 이상 필요.
+US_INDEX_BUDGET_USD = float(os.getenv("US_INDEX_BUDGET_USD", "0"))
+US_INDEX_SYMBOL = os.getenv("US_INDEX_SYMBOL", "SPY")
+
+# ② 신고가 돌파+시장필터. 총액을 슬롯 수로 나눠 종목당 예산 산정.
+US_BREAKOUT_BUDGET_USD = float(os.getenv("US_BREAKOUT_BUDGET_USD", "0"))
+US_BREAKOUT_MAX_POSITIONS = int(os.getenv("US_BREAKOUT_MAX_POSITIONS", "5"))
+
+# 해외 지정가 주문 시 즉시체결을 위한 가격 버퍼(현재가 대비). 매수는 +, 매도는 -.
+US_ORDER_SLIPPAGE = float(os.getenv("US_ORDER_SLIPPAGE", "0.01"))
+
 # ---- 안전장치 (kill-switch, 백테스트 불필요한 리스크 관리) ----
 # 코스피(KODEX200 대용) 당일 등락률이 이 값(%) 이하로 급락하면 그날 신규 진입 중단.
 CRASH_HALT_PCT = float(os.getenv("CRASH_HALT_PCT", "-4.0"))

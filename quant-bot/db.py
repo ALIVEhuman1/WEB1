@@ -30,6 +30,19 @@ CREATE TABLE IF NOT EXISTS daily_candles (
 );
 """
 
+US_DAILY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS us_daily_candles (
+    symbol TEXT NOT NULL,
+    date   TEXT NOT NULL,   -- YYYY-MM-DD
+    open   REAL NOT NULL,   -- 달러(소수), 국내 일봉과 달리 REAL
+    high   REAL NOT NULL,
+    low    REAL NOT NULL,
+    close  REAL NOT NULL,
+    volume INTEGER NOT NULL,
+    PRIMARY KEY (symbol, date)
+);
+"""
+
 POSITIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS positions (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +66,7 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.execute(SCHEMA)
         conn.execute(DAILY_SCHEMA)
+        conn.execute(US_DAILY_SCHEMA)
         conn.execute(POSITIONS_SCHEMA)
         # 기존 DB 마이그레이션: strategy 컬럼이 없으면 추가
         cols = [r[1] for r in conn.execute("PRAGMA table_info(positions)").fetchall()]
@@ -152,6 +166,57 @@ def get_daily_candles_df(stock_code: str, start_date: str | None = None, end_dat
 
     rows = get_daily_candles(stock_code, start_date, end_date)
     return pd.DataFrame(rows, columns=["stock_code", "date", "open", "high", "low", "close", "volume"])
+
+
+# ---- 미국 일봉 (REAL 가격, symbol/date PK) ----
+
+def upsert_us_daily_candles(rows: list[dict]) -> int:
+    """미국 일봉 UPSERT. 각 행: symbol, date(YYYY-MM-DD), open/high/low/close(float), volume(int)."""
+    if not rows:
+        return 0
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT INTO us_daily_candles (symbol, date, open, high, low, close, volume)
+            VALUES (:symbol, :date, :open, :high, :low, :close, :volume)
+            ON CONFLICT(symbol, date) DO UPDATE SET
+                open = excluded.open,
+                high = excluded.high,
+                low = excluded.low,
+                close = excluded.close,
+                volume = excluded.volume
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def get_us_daily_candles(symbol: str, start_date: str | None = None, end_date: str | None = None) -> list[dict]:
+    """미국 일봉을 dict 리스트로 조회한다 (date 오름차순)."""
+    query = "SELECT symbol, date, open, high, low, close, volume FROM us_daily_candles WHERE symbol = ?"
+    params: list = [symbol]
+    if start_date:
+        query += " AND date >= ?"
+        params.append(start_date)
+    if end_date:
+        query += " AND date <= ?"
+        params.append(end_date)
+    query += " ORDER BY date"
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_us_daily_candles_df(symbol: str, start_date: str | None = None, end_date: str | None = None):
+    """미국 일봉을 pandas DataFrame으로 조회한다 (date 인덱스, float 가격)."""
+    import pandas as pd
+
+    rows = get_us_daily_candles(symbol, start_date, end_date)
+    df = pd.DataFrame(rows, columns=["symbol", "date", "open", "high", "low", "close", "volume"])
+    if not df.empty:
+        df = df.set_index("date")
+    return df
 
 
 # ---- 자동매매 포지션 관리 ----

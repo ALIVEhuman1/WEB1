@@ -5,14 +5,16 @@
 - 5종목 시뮬: 실제로 동시 최대 N종목만, RSI 낮은 순 우선, 익일 시가 체결로 굴린
   현실적 자본곡선 (누적/MDD가 정직함 — 신호가 급락일에 몰리는 아티팩트 제거)
 
-규칙: 종가>SMA200 필터, RSI(2)<RSI_ENTRY 진입(익일 시가), 청산은 종가>SMA5(익일
-시가) 또는 10거래일 상한. 손절(-7%)은 코너스 원본엔 없어 기본 비활성(--stop로 켬).
+규칙: 종가>(자기)SMA200 필터, RSI(2)<RSI_ENTRY 진입(익일 시가), 청산은 종가>SMA5
+(익일 시가) 또는 10거래일 상한. 손절(-7%)은 코너스 원본엔 없어 기본 비활성(--stop).
+--market-filter로 지수(SPY>SMA200) 시장필터를 얹으면 하락장엔 신규 진입을 관망한다.
 
 사용법:
-    python backtest_us_rsi2.py --split                 # 원본(손절 없음) 4구간
-    python backtest_us_rsi2.py --split --stop 0.07     # -7% 손절 켜서 비교
-    python backtest_us_rsi2.py --split --positions 5   # 동시 보유 슬롯 수
-    python backtest_us_rsi2.py --limit 20 --split      # 앞 20종목만 (빠른 점검)
+    python backtest_us_rsi2.py --split                    # 원본(시장필터 없음) 4구간
+    python backtest_us_rsi2.py --split --market-filter    # SPY 지수필터 얹어 비교
+    python backtest_us_rsi2.py --split --stop 0.07        # -7% 손절 켜서 비교
+    python backtest_us_rsi2.py --split --positions 5      # 동시 보유 슬롯 수
+    python backtest_us_rsi2.py --limit 20 --split         # 앞 20종목만 (빠른 점검)
 """
 import argparse
 import time
@@ -30,6 +32,7 @@ RSI_ENTRY = 5.0
 SMA_LONG = 200
 SMA_SHORT = 5
 MAX_HOLD_DAYS = 10
+BENCHMARK = "SPY"
 START = "2021-01-01"
 
 SPLIT_WINDOWS = [
@@ -68,8 +71,9 @@ def compute_signals(df: pd.DataFrame) -> dict:
     }
 
 
-def rsi2_trades(sig: dict, stop: float) -> list[dict]:
-    """신호 전수 뷰: 한 종목을 한 번에 하나씩 잡는 독립 거래 목록 (거래당 엣지 측정)."""
+def rsi2_trades(sig: dict, stop: float, market_ok: dict) -> list[dict]:
+    """신호 전수 뷰: 한 종목을 한 번에 하나씩 잡는 독립 거래 목록 (거래당 엣지 측정).
+    market_ok[날짜]가 False면 그날 신규 진입 금지(지수 시장필터)."""
     o, low, c = sig["o"], sig["low"], sig["c"]
     sma200, sma5, rsi = sig["sma200"], sig["sma5"], sig["rsi"]
     dates = sig["dates"]
@@ -80,7 +84,7 @@ def rsi2_trades(sig: dict, stop: float) -> list[dict]:
     trades, hold_i, entry_price = [], None, 0.0
     for t in range(SMA_LONG, n - 1):
         if hold_i is None:
-            if c[t] > sma200[t] and rsi[t] < RSI_ENTRY:
+            if market_ok.get(dates[t], True) and c[t] > sma200[t] and rsi[t] < RSI_ENTRY:
                 hold_i = t + 1
                 entry_price = o[t + 1] * (1 + SLIPPAGE_RATE)
             continue
@@ -104,8 +108,9 @@ def rsi2_trades(sig: dict, stop: float) -> list[dict]:
     return trades
 
 
-def portfolio_sim(data: dict, n_positions: int, stop: float) -> tuple[pd.Series, pd.DataFrame]:
+def portfolio_sim(data: dict, n_positions: int, stop: float, market_ok: dict) -> tuple[pd.Series, pd.DataFrame]:
     """동시 최대 n_positions종목, RSI 낮은 순 우선, 익일 시가 체결로 굴린 현실적 시뮬.
+    market_ok[날짜]가 False면 그날 신규 진입 금지(지수 시장필터).
     반환: (일별 포트폴리오 수익률 시계열, 실현 거래 목록)."""
     calendar = sorted({d for sig in data.values() for d in sig["dates"]})
     idxmap = {tk: {d: i for i, d in enumerate(sig["dates"])} for tk, sig in data.items()}
@@ -169,17 +174,18 @@ def portfolio_sim(data: dict, n_positions: int, stop: float) -> tuple[pd.Series,
             slot_returns.append(sig["c"][ti] / entry_price - 1 - US_ROUND_TRIP_COST)  # 진입일 + 왕복비용
         pend_buy = []
 
-        # 4) 오늘 신규 진입 신호 탐지 -> 내일 매수 예약 (RSI 낮은 순)
+        # 4) 오늘 신규 진입 신호 탐지 -> 내일 매수 예약 (RSI 낮은 순). 지수필터 통과 시만
         cands = []
-        for tk, sig in data.items():
-            if tk in held:
-                continue
-            ti = idxmap[tk].get(gd)
-            if ti is None or ti == 0 or np.isnan(sig["sma200"][ti]):
-                continue
-            if sig["c"][ti] > sig["sma200"][ti] and sig["rsi"][ti] < RSI_ENTRY:
-                cands.append((sig["rsi"][ti], tk))
-        cands.sort()
+        if market_ok.get(gd, True):
+            for tk, sig in data.items():
+                if tk in held:
+                    continue
+                ti = idxmap[tk].get(gd)
+                if ti is None or ti == 0 or np.isnan(sig["sma200"][ti]):
+                    continue
+                if sig["c"][ti] > sig["sma200"][ti] and sig["rsi"][ti] < RSI_ENTRY:
+                    cands.append((sig["rsi"][ti], tk))
+            cands.sort()
         pend_buy = [tk for _, tk in cands[:n_positions]]
 
         daily_ret[gd] = sum(slot_returns) / n_positions  # 빈 슬롯=현금(0), 현금 드래그 반영
@@ -191,6 +197,16 @@ def load_prices(ticker: str) -> pd.DataFrame:
     import yfinance as yf
 
     return yf.download(ticker, start=START, auto_adjust=True, progress=False)
+
+
+def market_regime(bench: pd.DataFrame) -> dict:
+    """SPY 종가>SMA200이면 True인 날짜->bool 맵 (지수 시장필터)."""
+    bench = bench.sort_index()
+    if isinstance(bench.columns, pd.MultiIndex):
+        bench.columns = bench.columns.get_level_values(0)
+    c = bench["Close"].astype(float)
+    ok = (c > c.rolling(SMA_LONG).mean()).fillna(False)
+    return {d.strftime("%Y-%m-%d"): bool(v) for d, v in ok.items()}
 
 
 def load_all(tickers: list[str]) -> dict:
@@ -220,6 +236,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="US RSI(2) 평균회귀 백테스트")
     parser.add_argument("--split", action="store_true", help="전체/하락/회복/최근 4구간")
     parser.add_argument("--stop", type=float, default=0.0, help="손절 비율(예 0.07). 기본 0=손절 없음(원본)")
+    parser.add_argument("--market-filter", action="store_true",
+                        help="SPY>SMA200일 때만 신규 진입(지수 시장필터). 하락장 관망")
     parser.add_argument("--positions", type=int, default=5, help="동시 보유 슬롯 수 (기본 5)")
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)
@@ -230,15 +248,22 @@ if __name__ == "__main__":
     if args.limit:
         tickers = tickers[:args.limit]
     stop_txt = f"{args.stop:.0%}" if args.stop > 0 else "없음(원본)"
-    print(f"US RSI(2): {len(tickers)}종목 | 손절 {stop_txt} | 슬롯 {args.positions} | 비용 왕복 {US_ROUND_TRIP_COST:.1%}")
+    filt_txt = f"{BENCHMARK}>SMA{SMA_LONG}" if args.market_filter else "끔"
+    print(f"US RSI(2): {len(tickers)}종목 | 손절 {stop_txt} | 시장필터 {filt_txt} | "
+          f"슬롯 {args.positions} | 비용 왕복 {US_ROUND_TRIP_COST:.1%}")
 
     data = load_all(tickers)
     if not data:
         print("데이터 로드 실패로 종료")
         raise SystemExit(1)
 
-    all_trades = pd.DataFrame([t for sig in data.values() for t in rsi2_trades(sig, args.stop)])
-    sim_daily, sim_trades = portfolio_sim(data, args.positions, args.stop)
+    if args.market_filter:
+        market_ok = market_regime(load_prices(BENCHMARK))
+    else:
+        market_ok = {}   # 빈 맵 -> .get(날짜, True)로 항상 통과(원본 동작)
+
+    all_trades = pd.DataFrame([t for sig in data.values() for t in rsi2_trades(sig, args.stop, market_ok)])
+    sim_daily, sim_trades = portfolio_sim(data, args.positions, args.stop, market_ok)
 
     windows = SPLIT_WINDOWS if args.split else [("결과", args.start, args.end)]
     for label, s, e in windows:

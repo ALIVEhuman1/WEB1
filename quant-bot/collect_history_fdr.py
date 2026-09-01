@@ -24,44 +24,9 @@ logger = logging.getLogger(__name__)
 PER_STOCK_DELAY = 0.5  # 네이버 쪽 과도한 요청 방지용 딜레이 (초)
 INDEX_CODE = "KS11"    # 코스피 지수 (시장 상태 필터용, 종목과 함께 daily_candles에 저장)
 
-# FDR의 지수(KS11)가 비현실적 값(스케일 3배·일간 8%+ 급변 다수)을 반환하는 문제가 있어
-# 지수만 yfinance(Yahoo)의 실제 코스피 컴포지트 티커로 받는다. 개별종목 FDR은 정상이라 유지.
-YF_INDEX = {"KS11": "^KS11"}
-
-
-def fetch_index_history_yf(code: str, years: int) -> list[dict]:
-    """지수(코스피 등)를 yfinance로 받는다. FDR KS11 오염 우회. 저장 형식은 종목과 동일."""
-    import pandas as pd
-    import yfinance as yf
-
-    start = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
-    df = yf.download(YF_INDEX[code], start=start, auto_adjust=False, progress=False)
-    if df is None or df.empty:
-        return []
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    rows = []
-    for idx, r in df.iterrows():
-        o, c = r["Open"], r["Close"]
-        if pd.isna(o) or pd.isna(c) or float(o) <= 0:
-            continue
-        rows.append({
-            "stock_code": code,
-            "date": idx.strftime("%Y%m%d"),
-            "open": int(r["Open"]),
-            "high": int(r["High"]),
-            "low": int(r["Low"]),
-            "close": int(r["Close"]),
-            "volume": int(r["Volume"]) if pd.notna(r.get("Volume")) else 0,
-        })
-    return rows
-
 
 @retry_with_backoff(max_retries=3, base_delay=2.0)
 def fetch_daily_history_fdr(stock_code: str, years: int) -> list[dict]:
-    if stock_code in YF_INDEX:          # 지수는 yfinance 경로로 (FDR 오염 회피)
-        return fetch_index_history_yf(stock_code, years)
-
     import FinanceDataReader as fdr
 
     start = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")

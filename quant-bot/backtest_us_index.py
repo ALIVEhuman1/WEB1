@@ -103,38 +103,82 @@ def vix_regime(vix_df: pd.DataFrame, threshold: float) -> dict:
 FRED_HY_OAS = "BAMLH0A0HYM2"   # ICE BofA 미국 하이일드 OAS(%), 1996~
 
 
+def _fred_txt(series_id: str) -> pd.Series | None:
+    """FRED 전체기간 텍스트 엔드포인트. 헤더 블록 뒤 'DATE VALUE' 고정폭을 파싱한다."""
+    import urllib.request
+
+    url = f"https://fred.stlouisfed.org/data/{series_id}.txt"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        lines = resp.read().decode("utf-8", "replace").splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln.strip().startswith("DATE")), None)
+    if start is None:
+        return None
+    dates, vals = [], []
+    for ln in lines[start + 1:]:
+        parts = ln.split()
+        if len(parts) < 2:
+            continue
+        dates.append(parts[0])
+        vals.append(pd.to_numeric(parts[1], errors="coerce"))   # 결측 "." -> NaN
+    return pd.Series(vals, index=pd.to_datetime(dates, errors="coerce")).dropna()
+
+
+def _fred_csv(series_id: str) -> pd.Series | None:
+    """FRED 그래프 CSV 엔드포인트(최근 구간만 주는 경우가 있음)."""
+    url = (f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+           f"&cosd=1996-01-01&coed=2100-01-01")
+    df = pd.read_csv(url)
+    df.columns = ["date", "value"] + list(df.columns[2:])
+    return pd.Series(pd.to_numeric(df["value"], errors="coerce").values,
+                     index=pd.to_datetime(df["date"])).dropna()
+
+
 def load_credit_series() -> tuple[pd.Series, str] | None:
     """신용위험 시계열을 받는다. 반환: (시계열, 방향) 또는 None.
 
     1순위 FRED 하이일드 스프레드(낮을수록 안전, 1996~ 장기).
     실패 시 yfinance HYG/IEF 비율로 폴백(높을수록 안전, 2007~).
     """
-    # cosd/coed를 명시하지 않으면 FRED가 최근 몇 년만 돌려줘 위기 구간이 비어버린다.
-    url = (f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_HY_OAS}"
-           f"&cosd=1996-01-01&coed=2100-01-01")
-    try:
-        df = pd.read_csv(url)
-        df.columns = ["date", "value"] + list(df.columns[2:])
-        s = pd.Series(pd.to_numeric(df["value"], errors="coerce").values,
-                      index=pd.to_datetime(df["date"])).dropna()
-        if len(s) > 500:
-            print(f"  신용지표: FRED {FRED_HY_OAS} (하이일드 스프레드) {len(s)}일 "
+    need = pd.Timestamp(START)      # 백테스트 시작을 못 덮으면 그 소스는 쓸모없다
+
+    # FRED .txt는 전체 기간을 주지만, graph/fredgraph.csv는 cosd를 줘도 최근 3년만
+    # 돌려주는 경우가 있어(2026-09 확인) 위기 구간이 통째로 비어버린다. 둘 다 시도하고
+    # '구간을 실제로 덮는지'로 채택 여부를 판정한다.
+    for label, fetch in (
+        ("FRED txt", lambda: _fred_txt(FRED_HY_OAS)),
+        ("FRED csv", lambda: _fred_csv(FRED_HY_OAS)),
+    ):
+        try:
+            s = fetch()
+        except Exception as exc:
+            print(f"  {label} 로드 실패({exc})")
+            continue
+        if s is None or s.empty:
+            continue
+        if s.index[0] <= need:
+            print(f"  신용지표: {label} {FRED_HY_OAS} (하이일드 스프레드) {len(s)}일 "
                   f"({s.index[0]:%Y-%m-%d} ~ {s.index[-1]:%Y-%m-%d})")
             return s, "spread"
-        print(f"  FRED 응답이 {len(s)}일뿐 -> HYG/IEF 폴백 시도")
-    except Exception as exc:
-        print(f"  FRED 로드 실패({exc}) -> HYG/IEF 폴백 시도")
+        print(f"  {label}는 {s.index[0]:%Y-%m-%d}부터라 {START} 구간을 못 덮음 -> 다음 소스")
 
-    try:
-        hyg, ief = load_prices("HYG"), load_prices("IEF")
-        if hyg is None or ief is None or hyg.empty or ief.empty:
-            return None
-        ratio = (hyg["Close"].astype(float) / ief["Close"].astype(float)).dropna()
-        print(f"  신용지표: HYG/IEF 비율(폴백) {len(ratio)}일")
-        return ratio, "ratio"
-    except Exception as exc:
-        print(f"  신용지표 로드 실패({exc})")
-        return None
+    # 폴백: 하이일드 ETF / 국채 ETF 비율. HYG(2007-04~)가 더 민감해 우선,
+    # 더 긴 이력이 필요하면 LQD(2002-07~, 투자등급)로 내려간다.
+    for risky, safe in (("HYG", "IEF"), ("LQD", "IEF")):
+        try:
+            a, b = load_prices(risky), load_prices(safe)
+            if a is None or b is None or a.empty or b.empty:
+                continue
+            ratio = (a["Close"].astype(float) / b["Close"].astype(float)).dropna()
+            if ratio.empty:
+                continue
+            note = "" if ratio.index[0] <= need else f" (경고: {START}까지 못 덮음)"
+            print(f"  신용지표: {risky}/{safe} 비율(폴백) {len(ratio)}일 "
+                  f"({ratio.index[0]:%Y-%m-%d} ~ {ratio.index[-1]:%Y-%m-%d}){note}")
+            return ratio, "ratio"
+        except Exception as exc:
+            print(f"  {risky}/{safe} 로드 실패({exc})")
+    print("  신용지표를 어떤 소스에서도 받지 못했습니다")
+    return None
 
 
 def credit_regime(series: pd.Series, direction: str, ma_days: int, target_dates) -> dict:

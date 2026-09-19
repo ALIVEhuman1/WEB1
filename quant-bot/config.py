@@ -51,6 +51,14 @@ TRADE_K = float(os.getenv("TRADE_K", "0.8"))                       # 돌파 계�
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))               # 동시 보유 종목 수
 TRADE_BUDGET_KRW = int(os.getenv("TRADE_BUDGET_KRW", "1000000"))   # 종목당 투입 금액(원)
 
+# 돌파 전략 시장 폭(브레드스) 보조필터: 전종목 '자기 200일선 위' 비율이 이 값 미만이면
+# 신규 진입 관망. 검증(2026-09, 전종목 2228개, backtest_multi.py breakout_bd):
+# 임계 0.4에서 거래당 +0.212%->+0.626%, MDD -38.6%->-25.0%,
+# 하락장 21-22는 진입 0건으로 누적 -30.9% 손실을 관망(0)으로 전환.
+# 30/40/50% 세 임계 모두 전 구간에서 기존을 이겨 견고성도 확인됨.
+# 0이면 비활성. 전종목 일봉(collect_market.py)이 있어야 의미가 있다.
+BREAKOUT_BREADTH_MIN = float(os.getenv("BREAKOUT_BREADTH_MIN", "0.4"))
+
 # 지수 타이밍 전략(KODEX 200)에 배분할 금액. 0이면 비활성.
 ETF_BUDGET_KRW = int(os.getenv("ETF_BUDGET_KRW", "0"))
 

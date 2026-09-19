@@ -6,8 +6,14 @@ KR판 etf_timing.py의 미장 버전 검증. SPY/QQQ 일봉(yfinance)으로 돌�
 미래참조 없음: 신호는 전일 종가>SMA200으로 확정하고 당일 수익률에 반영(1일 지연).
 상태 전환(매수/매도)마다 왕복비용을 차감. 현금 구간은 0% (채권 이자 미가정, 보수적).
 
+서브소스 1순위: 변동성 레짐 필터(--vix). VIX>=임계면 200일선 위여도 관망해
+급락을 200일선보다 빨리 회피한다(차트=메인, VIX=거부권 보조). --vix면 각 구간에서
+'타이밍' vs '타이밍+VIX'를 나란히 출력해 급락 구간 MDD 개선을 비교한다.
+
 사용법:
     python backtest_us_index.py --split            # SPY/QQQ, 4구간
+    python backtest_us_index.py --split --vix      # VIX 필터 유무 비교 (핵심)
+    python backtest_us_index.py --split --vix --vix-threshold 28
     python backtest_us_index.py --tickers SPY,QQQ,IWM --split
 """
 import argparse
@@ -38,8 +44,9 @@ def load_prices(ticker: str) -> pd.DataFrame:
     return df.sort_index()
 
 
-def timing_backtest(df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
-    """200일선 타이밍. 반환: (일별 전략 수익률, 라운드트립 거래목록)."""
+def timing_backtest(df: pd.DataFrame, regime_ok: dict | None = None) -> tuple[pd.Series, pd.DataFrame]:
+    """200일선 타이밍. regime_ok[날짜]=False면 200일선 위여도 그날 보유 금지(변동성 레짐 게이트).
+    반환: (일별 전략 수익률, 라운드트립 거래목록)."""
     c = df["Close"].astype(float)
     sma = c.rolling(MA_DAYS).mean()
     ret = c.pct_change().to_numpy()
@@ -53,7 +60,9 @@ def timing_backtest(df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
     entry_i = 0
     entry_c = 0.0
     for t in range(MA_DAYS, n):
-        hold_today = bool(sig[t - 1])   # 1일 지연: 어제 종가 신호로 오늘 보유 결정
+        # 1일 지연: 어제 종가 신호 + 어제 변동성 레짐으로 오늘 보유 결정 (미래참조 없음)
+        vok = True if regime_ok is None else regime_ok.get(dates[t - 1], True)
+        hold_today = bool(sig[t - 1]) and vok
         r = ret[t] if hold_today else 0.0
         # 상태 전환 비용: 어제 보유상태(in_pos)와 오늘 목표가 다르면 편도 비용 1회
         if hold_today != in_pos:
@@ -70,6 +79,12 @@ def timing_backtest(df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
         trades.append({"date": dates[-1], "ret": c.iloc[-1] / entry_c - 1 - SWITCH_COST,
                        "hold": n - 1 - entry_i})
     return pd.Series(daily).sort_index(), pd.DataFrame(trades)
+
+
+def vix_regime(vix_df: pd.DataFrame, threshold: float) -> dict:
+    """VIX 종가 < threshold이면 '위험 낮음(진입 허용)'. 날짜(YYYY-MM-DD)->bool 맵."""
+    c = vix_df["Close"].astype(float)
+    return {d.strftime("%Y-%m-%d"): bool(v < threshold) for d, v in c.items()}
 
 
 def buyhold_line(df: pd.DataFrame, s, e) -> str:
@@ -93,10 +108,14 @@ if __name__ == "__main__":
     parser.add_argument("--split", action="store_true", help="전체/금융위기/2022/최근 4구간")
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)
+    parser.add_argument("--vix", action="store_true",
+                        help="변동성 레짐 필터: VIX>=임계면 200일선 위여도 관망(급락 조기 회피)")
+    parser.add_argument("--vix-threshold", type=float, default=30.0, help="VIX 진입 차단 임계 (기본 30)")
     args = parser.parse_args()
 
     tickers = [t.strip().upper() for t in args.tickers.split(",")]
-    print(f"US 지수타이밍(SMA{MA_DAYS}): {', '.join(tickers)} | 전환비용 편도 {SWITCH_COST:.1%} | {START}~")
+    vtxt = f" | VIX필터 <{args.vix_threshold:.0f}" if args.vix else ""
+    print(f"US 지수타이밍(SMA{MA_DAYS}): {', '.join(tickers)} | 전환비용 편도 {SWITCH_COST:.1%}{vtxt} | {START}~")
 
     data = {}
     for tk in tickers:
@@ -106,11 +125,23 @@ if __name__ == "__main__":
             continue
         data[tk] = df
 
+    regime = None
+    if args.vix:
+        vix_df = load_prices("^VIX")
+        if vix_df is None or vix_df.empty:
+            print("  ^VIX 로드 실패 -> VIX 필터 없이 진행")
+        else:
+            regime = vix_regime(vix_df, args.vix_threshold)
+
     windows = SPLIT_WINDOWS if args.split else [("결과", args.start, args.end)]
     for label, s, e in windows:
         print(f"\n===== {label} ({s or '처음'} ~ {e or '현재'}) =====")
         for tk, df in data.items():
-            daily, trades = timing_backtest(df)
-            r = summarize(f"{tk}타이밍", daily, trades, s, e)
-            print(f"  {tk:>4} 타이밍 | " + ("구간 없음" if r is None else _fmt(r[1])))
-            print(f"  {tk:>4} 매수보유 | {buyhold_line(df, s, e)}")
+            base_daily, base_trades = timing_backtest(df)
+            rb = summarize(f"{tk}타이밍", base_daily, base_trades, s, e)
+            print(f"  {tk:>4} 타이밍     | " + ("구간 없음" if rb is None else _fmt(rb[1])))
+            if regime is not None:
+                vd, vt = timing_backtest(df, regime)
+                rv = summarize(f"{tk}+VIX", vd, vt, s, e)
+                print(f"  {tk:>4} 타이밍+VIX | " + ("구간 없음" if rv is None else _fmt(rv[1])))
+            print(f"  {tk:>4} 매수보유   | {buyhold_line(df, s, e)}")

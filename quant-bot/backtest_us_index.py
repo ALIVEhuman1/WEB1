@@ -109,15 +109,19 @@ def load_credit_series() -> tuple[pd.Series, str] | None:
     1순위 FRED 하이일드 스프레드(낮을수록 안전, 1996~ 장기).
     실패 시 yfinance HYG/IEF 비율로 폴백(높을수록 안전, 2007~).
     """
-    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_HY_OAS}"
+    # cosd/coed를 명시하지 않으면 FRED가 최근 몇 년만 돌려줘 위기 구간이 비어버린다.
+    url = (f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_HY_OAS}"
+           f"&cosd=1996-01-01&coed=2100-01-01")
     try:
         df = pd.read_csv(url)
         df.columns = ["date", "value"] + list(df.columns[2:])
         s = pd.Series(pd.to_numeric(df["value"], errors="coerce").values,
                       index=pd.to_datetime(df["date"])).dropna()
         if len(s) > 500:
-            print(f"  신용지표: FRED {FRED_HY_OAS} (하이일드 스프레드) {len(s)}일")
+            print(f"  신용지표: FRED {FRED_HY_OAS} (하이일드 스프레드) {len(s)}일 "
+                  f"({s.index[0]:%Y-%m-%d} ~ {s.index[-1]:%Y-%m-%d})")
             return s, "spread"
+        print(f"  FRED 응답이 {len(s)}일뿐 -> HYG/IEF 폴백 시도")
     except Exception as exc:
         print(f"  FRED 로드 실패({exc}) -> HYG/IEF 폴백 시도")
 
@@ -205,6 +209,15 @@ if __name__ == "__main__":
             cr = credit_regime(series, direction, args.credit_ma, all_dates)
             blocked = sum(1 for v in cr.values() if not v)
             print(f"  신용 필터: 이평 {args.credit_ma}일 | 차단(관망) 예정일 {blocked}/{len(cr)}일")
+            # 신용 데이터가 구간을 못 덮으면 그 구간 결과는 '기존과 동일'해져 무효다.
+            covered = series.index[0].strftime("%Y-%m-%d")
+            for wlabel, ws, we in (SPLIT_WINDOWS if args.split else []):
+                end = we or "9999"
+                if covered > (ws or "0000") and covered < end:
+                    print(f"  [경고] '{wlabel}' 구간 시작({ws})보다 신용 데이터가 늦게 시작({covered})"
+                          f" -> 그 구간 비교는 무효(기존과 동일해짐)")
+                elif covered >= end:
+                    print(f"  [경고] '{wlabel}' 구간에 신용 데이터 없음({covered}부터) -> 비교 무효")
             overlays.append(("+신용", cr))
 
     windows = SPLIT_WINDOWS if args.split else [("결과", args.start, args.end)]

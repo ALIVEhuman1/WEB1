@@ -2,6 +2,11 @@
 
 전략 (동일 비용 모델: 수수료 0.015%x2 + 거래세 0.18% + 슬리피지 0.1%):
 - breakout   변동성 돌파: 기존 확정 규칙 (K=0.8, 거래량/시장 필터, 익일시가 청산), 고정 watchlist
+- breakout_bd breakout + 시장 폭(브레드스) 보조필터: 전종목 '자기 200일선 위' 비율이
+              임계(--breadth-threshold, 기본 40%) 미만인 날은 진입 금지. 서브소스 2순위 검증용.
+              미장(생존편향 승자 110종목)에서는 비율이 구조적으로 높아 판정 불가였고,
+              임계를 올리자 55/60/65%에서 결과가 요동쳐(비단조) 폐기. 여기서는 큐레이션 없는
+              전종목(코스피+코스닥)으로 재검증한다. breakout과 나란히 돌려 비교할 것.
 - index      지수 타이밍(절대 모멘텀): 코스피 종가 > 200일선이면 지수 보유, 아니면 현금
 - lowvol      저변동성 우량주 (2026-07 검증 통과: 거래당 +1.57%, 승률 56%, MDD -20.7%,
               하락장에도 시장 -35% 대비 -8.9%로 방어. 방어형 세 번째 전략 후보)
@@ -30,6 +35,8 @@
     python backtest_multi.py --strategies momentum,index
     python backtest_multi.py --split --strategies breakout,index,recover,relstr  # 스윙 검증
     python backtest_multi.py --split --strategies breakout,index,lowvol,overnight,turnofmonth
+    python backtest_multi.py --split --strategies breakout,breakout_bd   # 브레드스 보조필터 검증
+    python backtest_multi.py --split --strategies breakout,breakout_bd --breadth-threshold 0.5
 """
 import argparse
 
@@ -382,12 +389,69 @@ def turnofmonth_trades() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _breakout_daily_trades() -> pd.DataFrame:
-    """변동성 돌파의 거래 목록 (기존 확정 규칙, 고정 watchlist)."""
+BREADTH_THRESHOLD = 0.4      # breakout_bd용 기본 임계 (CLI로 변경)
+_breadth_cache: dict | None = None
+
+
+def _breadth_map(threshold: float) -> tuple[dict, dict, int]:
+    """전종목(코스피+코스닥) '자기 200일선 위' 비율을 날짜별로 구해 임계 이상이면 True.
+
+    미장 유니버스(생존편향된 승자 110종목)와 달리 큐레이션이 없는 전체 시장이라
+    소외주·부진주까지 포함되어 '내부 붕괴'가 실제로 측정된다.
+    미래참조 없음: 진입일에는 전일 브레드스를 쓴다(시장필터 regime과 동일 규약).
+    반환: (날짜->통과여부, 날짜->비율, 집계 종목수)
+    """
+    global _breadth_cache
+    if _breadth_cache is None:
+        sql = """
+            SELECT date,
+                   AVG(CASE WHEN close > ma200 THEN 1.0 ELSE 0.0 END) AS ratio,
+                   COUNT(*) AS n
+            FROM (
+                SELECT stock_code, date, close,
+                       AVG(close) OVER (PARTITION BY stock_code ORDER BY date
+                                        ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) AS ma200,
+                       COUNT(*) OVER (PARTITION BY stock_code ORDER BY date
+                                      ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) AS cnt
+                FROM daily_candles
+                WHERE stock_code != ?
+            )
+            WHERE cnt = 200
+            GROUP BY date
+            ORDER BY date
+        """
+        with db.get_connection() as conn:
+            rows = conn.execute(sql, (INDEX_CODE,)).fetchall()
+        if not rows:
+            raise RuntimeError(
+                "브레드스를 계산할 전종목 일봉이 없습니다. collect_market.py --init 을 먼저 실행하세요."
+            )
+        dates = [r[0] for r in rows]
+        ratios = [r[1] for r in rows]
+        counts = [r[2] for r in rows]
+        # 전일 브레드스를 당일 진입 판단에 사용 (1일 지연)
+        lagged = {d: ratios[i - 1] for i, d in enumerate(dates) if i > 0}
+        _breadth_cache = {"ratio": lagged, "n": int(np.median(counts))}
+
+    ratio = _breadth_cache["ratio"]
+    return ({d: bool(r >= threshold) for d, r in ratio.items()}, ratio, _breadth_cache["n"])
+
+
+def _breakout_daily_trades(breadth_threshold: float | None = None) -> pd.DataFrame:
+    """변동성 돌파의 거래 목록 (기존 확정 규칙, 고정 watchlist).
+    breadth_threshold가 주어지면 전종목 브레드스가 그 미만인 날은 진입을 막는다."""
     from backtest import VOL_WINDOW, _load_market_regime
     from main import load_watchlist
 
     regime = _load_market_regime()
+    bd_ok = None
+    if breadth_threshold is not None:
+        bd_ok, ratio, n_stocks = _breadth_map(breadth_threshold)
+        vals = sorted(ratio.values())
+        med = vals[len(vals) // 2] if vals else 0.0
+        blocked = sum(1 for d, ok in bd_ok.items() if regime.get(d, False) and not ok)
+        print(f"[브레드스] 임계 {breadth_threshold:.0%} | 집계 종목수 {n_stocks} | "
+              f"200일선 위 비율 중앙값 {med:.0%} | 시장필터 통과했으나 브레드스로 차단된 날 {blocked}일")
     rows = []
     for code in load_watchlist():
         df = db.get_daily_candles_df(code)
@@ -399,6 +463,8 @@ def _breakout_daily_trades() -> pd.DataFrame:
         prev_vol = df["volume"].shift(1)
         vol_ma = df["volume"].rolling(VOL_WINDOW).mean().shift(1)
         allowed = (prev_vol > vol_ma) & df["date"].map(lambda d: bool(regime.get(d, False)))
+        if bd_ok is not None:      # 보조필터: 내부(브레드스)가 약한 날은 진입 금지
+            allowed &= df["date"].map(lambda d: bool(bd_ok.get(d, False)))
         df["exit_price"] = df["open"].shift(-1)
         df = df.dropna().reset_index(drop=True)
         hit = (df["high"] >= df["target"]) & allowed.reindex(df.index, fill_value=False)
@@ -495,6 +561,8 @@ def compute_all(names: list[str]) -> dict[str, tuple[pd.Series | None, pd.DataFr
 
     if "breakout" in names:
         results["breakout"] = (None, _breakout_daily_trades())
+    if "breakout_bd" in names:      # 돌파 + 전종목 브레드스 보조필터 (2순위 서브소스 검증)
+        results["breakout_bd"] = (None, _breakout_daily_trades(BREADTH_THRESHOLD))
     if "index" in names:
         results["index"] = index_series()
     if "recover" in names:
@@ -583,8 +651,11 @@ if __name__ == "__main__":
     parser.add_argument("--split", action="store_true", help="전체/하락/횡보/상승 4개 구간을 한 번에 출력")
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)
+    parser.add_argument("--breadth-threshold", type=float, default=BREADTH_THRESHOLD,
+                        help="breakout_bd의 브레드스 진입 허용 최소 비율 (기본 0.4 = 40%%)")
     args = parser.parse_args()
 
+    BREADTH_THRESHOLD = args.breadth_threshold
     db.init_db()
     names = [s.strip() for s in args.strategies.split(",")]
     print(f"전략 계산 중 (1회만 수행): {', '.join(names)}")

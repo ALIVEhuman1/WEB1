@@ -12,9 +12,16 @@
 미래참조 없음: 신호는 당일 종가로 확정 -> 익일 시가 체결. 시장필터는 SPY 당일
 종가>SMA200 (개장 전 확정). 트레일링은 진입 후 최고종가 기준(후행).
 
+서브소스 2순위: 시장 폭(--breadth). '200일선 위 종목 비율'이 임계 미만이면 신규 진입
+관망. 지수는 소수 대형주가 떠받쳐도 내부가 무너지는 국면을 잡는 보조 신호다
+(차트=메인, 브레드스=거부권). VIX(1순위)가 급락에 동시·후행해 실패한 것과 달리
+내부 균열은 지수보다 먼저 벌어지는지를 검증한다.
+
 사용법:
     python backtest_us_breakout.py --split
     python backtest_us_breakout.py --split --no-filter        # 시장필터 끄고 비교
+    python backtest_us_breakout.py --split --breadth          # 브레드스 보조필터 비교 (2순위)
+    python backtest_us_breakout.py --split --breadth --breadth-threshold 0.5
     python backtest_us_breakout.py --split --entry 50 --atr-mult 2.5
 """
 import argparse
@@ -67,7 +74,29 @@ def compute_signals(df: pd.DataFrame) -> dict:
         "donch": donch.to_numpy(),
         "atr": atr_series(h, low, c),
         "mom": mom.to_numpy(),
+        "sma200": c.rolling(SMA_LONG).mean().to_numpy(),   # 브레드스(200일선 위 비율)용
     }
+
+
+def breadth_regime(data: dict, threshold: float) -> tuple[dict, dict]:
+    """시장 폭: 각 날짜에 '자기 200일선 위'인 종목 비율을 구해 임계 이상이면 True.
+
+    지수는 소수 대형주가 떠받쳐도 내부가 무너지는 경우를 잡는 보조 신호.
+    미래참조 없음: 당일 종가 기준으로 계산하고 진입은 익일 시가에 집행된다.
+    반환: (날짜->통과여부, 날짜->실제 비율)
+    """
+    above: dict[str, int] = {}
+    total: dict[str, int] = {}
+    for sig in data.values():
+        c, sma, dates = sig["c"], sig["sma200"], sig["dates"]
+        for i, d in enumerate(dates):
+            if np.isnan(sma[i]):
+                continue
+            total[d] = total.get(d, 0) + 1
+            if c[i] > sma[i]:
+                above[d] = above.get(d, 0) + 1
+    ratio = {d: above.get(d, 0) / n for d, n in total.items() if n > 0}
+    return {d: bool(r >= threshold) for d, r in ratio.items()}, ratio
 
 
 def market_regime(bench: pd.DataFrame) -> dict:
@@ -231,6 +260,10 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)
     parser.add_argument("--limit", type=int, help="앞 N종목만 (빠른 점검)")
+    parser.add_argument("--breadth", action="store_true",
+                        help="시장 폭 보조필터: 200일선 위 종목 비율이 임계 미만이면 신규 진입 관망")
+    parser.add_argument("--breadth-threshold", type=float, default=0.4,
+                        help="브레드스 진입 허용 최소 비율 (기본 0.4 = 40%%)")
     args = parser.parse_args()
 
     DONCHIAN_ENTRY = args.entry
@@ -258,8 +291,22 @@ if __name__ == "__main__":
     all_trades = pd.DataFrame([t for sig in data.values() for t in breakout_trades(sig, market_ok)])
     sim_daily, sim_trades = portfolio_sim(data, market_ok, args.positions)
 
+    # 보조필터(브레드스): 시장필터 AND 내부 건강도. 켜면 기존과 나란히 비교 출력.
+    bd_daily = bd_trades = None
+    if args.breadth:
+        bd_ok, bd_ratio = breadth_regime(data, args.breadth_threshold)
+        combined = {d: bool(market_ok.get(d, False) and bd_ok.get(d, False)) for d in bd_ok}
+        bd_daily, bd_trades = portfolio_sim(data, combined, args.positions)
+        vals = sorted(bd_ratio.values())
+        med = vals[len(vals) // 2] if vals else 0.0
+        blocked = sum(1 for d, v in bd_ok.items() if market_ok.get(d, False) and not v)
+        print(f"[브레드스] 임계 {args.breadth_threshold:.0%} | 200일선 위 비율 중앙값 {med:.0%} | "
+              f"시장필터는 통과했으나 브레드스로 차단된 날 {blocked}일")
+
     windows = SPLIT_WINDOWS if args.split else [("결과", args.start, args.end)]
     for label, s, e in windows:
         print(f"\n===== {label} ({s or '처음'} ~ {e or '현재'}) =====")
-        _line("신호(전수) ", "돌파", None, all_trades, s, e)
-        _line(f"{args.positions}종목시뮬  ", f"돌파×{args.positions}", sim_daily, sim_trades, s, e)
+        _line("신호(전수)    ", "돌파", None, all_trades, s, e)
+        _line(f"{args.positions}종목시뮬     ", f"돌파×{args.positions}", sim_daily, sim_trades, s, e)
+        if bd_daily is not None:
+            _line(f"{args.positions}종목+브레드스", f"돌파+폭×{args.positions}", bd_daily, bd_trades, s, e)

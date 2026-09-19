@@ -16,10 +16,17 @@ KR판 etf_timing.py의 미장 버전 검증. SPY/QQQ 일봉(yfinance)으로 돌�
 (무의미) 아니면 휩쏘 악화라 구조적 실패이며, 최적값 탐색은 오버피팅이다.
 --vix는 재현/대조군 용도로만 남긴다.
 
+서브소스 3순위: 신용 스프레드(--credit). 하이일드 스프레드가 자기 이동평균 위로
+벌어지면(신용 악화) 200일선 위여도 관망. VIX(1순위)가 공포가 터진 뒤 튀는 동행·후행
+지표라 실패한 것과 달리, 채권시장이 부도위험을 미리 가격에 반영해 주식 급락에
+선행하는지를 검증한다. 데이터는 FRED 하이일드 OAS(1996~), 실패 시 HYG/IEF 비율 폴백.
+
 사용법:
     python backtest_us_index.py --split            # SPY/QQQ, 4구간
-    python backtest_us_index.py --split --vix      # VIX 필터 유무 비교 (핵심)
-    python backtest_us_index.py --split --vix --vix-threshold 28
+    python backtest_us_index.py --split --vix      # VIX 필터 비교 (탈락 재현용)
+    python backtest_us_index.py --split --credit   # 신용 스프레드 필터 비교 (3순위)
+    python backtest_us_index.py --split --credit --credit-ma 100
+    python backtest_us_index.py --split --vix --credit   # 둘 다 나란히
     python backtest_us_index.py --tickers SPY,QQQ,IWM --split
 """
 import argparse
@@ -93,6 +100,53 @@ def vix_regime(vix_df: pd.DataFrame, threshold: float) -> dict:
     return {d.strftime("%Y-%m-%d"): bool(v < threshold) for d, v in c.items()}
 
 
+FRED_HY_OAS = "BAMLH0A0HYM2"   # ICE BofA 미국 하이일드 OAS(%), 1996~
+
+
+def load_credit_series() -> tuple[pd.Series, str] | None:
+    """신용위험 시계열을 받는다. 반환: (시계열, 방향) 또는 None.
+
+    1순위 FRED 하이일드 스프레드(낮을수록 안전, 1996~ 장기).
+    실패 시 yfinance HYG/IEF 비율로 폴백(높을수록 안전, 2007~).
+    """
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_HY_OAS}"
+    try:
+        df = pd.read_csv(url)
+        df.columns = ["date", "value"] + list(df.columns[2:])
+        s = pd.Series(pd.to_numeric(df["value"], errors="coerce").values,
+                      index=pd.to_datetime(df["date"])).dropna()
+        if len(s) > 500:
+            print(f"  신용지표: FRED {FRED_HY_OAS} (하이일드 스프레드) {len(s)}일")
+            return s, "spread"
+    except Exception as exc:
+        print(f"  FRED 로드 실패({exc}) -> HYG/IEF 폴백 시도")
+
+    try:
+        hyg, ief = load_prices("HYG"), load_prices("IEF")
+        if hyg is None or ief is None or hyg.empty or ief.empty:
+            return None
+        ratio = (hyg["Close"].astype(float) / ief["Close"].astype(float)).dropna()
+        print(f"  신용지표: HYG/IEF 비율(폴백) {len(ratio)}일")
+        return ratio, "ratio"
+    except Exception as exc:
+        print(f"  신용지표 로드 실패({exc})")
+        return None
+
+
+def credit_regime(series: pd.Series, direction: str, ma_days: int, target_dates) -> dict:
+    """신용이 악화되지 않는 날만 진입 허용. 거래일에 맞춰 직전값으로 채운다.
+
+    spread: 스프레드가 자기 이동평균 아래 = 신용 안정 -> 허용
+    ratio : HYG/IEF가 자기 이동평균 위 = 위험자산 선호 -> 허용
+    자기 이동평균 대비 상대 판단이라 수십 년에 걸친 수준 변화에 견고하다.
+    """
+    ma = series.rolling(ma_days).mean()
+    ok = (series < ma) if direction == "spread" else (series > ma)
+    idx = pd.to_datetime(sorted(target_dates))
+    aligned = ok.reindex(ok.index.union(idx)).ffill().reindex(idx)
+    return {d.strftime("%Y-%m-%d"): (True if pd.isna(v) else bool(v)) for d, v in aligned.items()}
+
+
 def buyhold_line(df: pd.DataFrame, s, e) -> str:
     """같은 구간 매수후보유 벤치마크(누적/MDD)."""
     c = df["Close"].astype(float)
@@ -115,8 +169,11 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=str)
     parser.add_argument("--end", type=str)
     parser.add_argument("--vix", action="store_true",
-                        help="변동성 레짐 필터: VIX>=임계면 200일선 위여도 관망(급락 조기 회피)")
+                        help="변동성 레짐 필터: VIX>=임계면 200일선 위여도 관망 (2026-09 검증 탈락)")
     parser.add_argument("--vix-threshold", type=float, default=30.0, help="VIX 진입 차단 임계 (기본 30)")
+    parser.add_argument("--credit", action="store_true",
+                        help="신용 스프레드 필터: 하이일드 스프레드가 자기 이평 위(신용 악화)면 관망")
+    parser.add_argument("--credit-ma", type=int, default=200, help="신용지표 이동평균 기간 (기본 200)")
     args = parser.parse_args()
 
     tickers = [t.strip().upper() for t in args.tickers.split(",")]
@@ -131,13 +188,24 @@ if __name__ == "__main__":
             continue
         data[tk] = df
 
-    regime = None
+    overlays: list[tuple[str, dict]] = []   # (표시명, 레짐맵)
     if args.vix:
         vix_df = load_prices("^VIX")
         if vix_df is None or vix_df.empty:
-            print("  ^VIX 로드 실패 -> VIX 필터 없이 진행")
+            print("  ^VIX 로드 실패 -> VIX 필터 건너뜀")
         else:
-            regime = vix_regime(vix_df, args.vix_threshold)
+            overlays.append(("+VIX", vix_regime(vix_df, args.vix_threshold)))
+    if args.credit:
+        loaded = load_credit_series()
+        if loaded is None:
+            print("  신용지표 로드 실패 -> 신용 필터 건너뜀")
+        else:
+            series, direction = loaded
+            all_dates = {d.strftime("%Y-%m-%d") for df in data.values() for d in df.index}
+            cr = credit_regime(series, direction, args.credit_ma, all_dates)
+            blocked = sum(1 for v in cr.values() if not v)
+            print(f"  신용 필터: 이평 {args.credit_ma}일 | 차단(관망) 예정일 {blocked}/{len(cr)}일")
+            overlays.append(("+신용", cr))
 
     windows = SPLIT_WINDOWS if args.split else [("결과", args.start, args.end)]
     for label, s, e in windows:
@@ -145,9 +213,9 @@ if __name__ == "__main__":
         for tk, df in data.items():
             base_daily, base_trades = timing_backtest(df)
             rb = summarize(f"{tk}타이밍", base_daily, base_trades, s, e)
-            print(f"  {tk:>4} 타이밍     | " + ("구간 없음" if rb is None else _fmt(rb[1])))
-            if regime is not None:
-                vd, vt = timing_backtest(df, regime)
-                rv = summarize(f"{tk}+VIX", vd, vt, s, e)
-                print(f"  {tk:>4} 타이밍+VIX | " + ("구간 없음" if rv is None else _fmt(rv[1])))
-            print(f"  {tk:>4} 매수보유   | {buyhold_line(df, s, e)}")
+            print(f"  {tk:>4} 타이밍      | " + ("구간 없음" if rb is None else _fmt(rb[1])))
+            for name, regime in overlays:
+                od, ot = timing_backtest(df, regime)
+                ro = summarize(f"{tk}{name}", od, ot, s, e)
+                print(f"  {tk:>4} 타이밍{name:<5}| " + ("구간 없음" if ro is None else _fmt(ro[1])))
+            print(f"  {tk:>4} 매수보유    | {buyhold_line(df, s, e)}")
